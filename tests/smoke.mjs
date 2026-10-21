@@ -6,6 +6,7 @@
  * 非 GET 405、以及删除的全部边界。
  */
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
@@ -209,12 +210,23 @@ try {
   assert.equal(delNotImage.status, 400)
   assert.equal(fs.existsSync(textFile), true, '非图片文件不该被删')
 
+  // 预置一份缩略图缓存，验证删除会把它一起清掉（不留残影）
+  const thumbDir = path.join(os.tmpdir(), 'dsh-comfyui-album-thumbs')
+  fs.mkdirSync(thumbDir, { recursive: true })
+  const imageStat = fs.statSync(imagePath)
+  const thumbKey = crypto.createHash('sha1')
+    .update(`${imagePath.toLowerCase()}|${imageStat.mtimeMs}|${imageStat.size}|360`)
+    .digest('hex')
+  const thumbFile = path.join(thumbDir, `${thumbKey}.webp`)
+  fs.writeFileSync(thumbFile, 'stale')
+
   const del = await fetch(origin + '/comfyui-album/api/delete?path=' + encodeURIComponent(imagePath), { method: 'POST' })
   assert.equal(del.status, 200)
   const delBody = await del.json()
   assert.deepEqual(delBody.removed.slice().sort(), [imagePath, `${imagePath}.json`].sort())
   assert.equal(fs.existsSync(imagePath), false, '图片应被删除')
   assert.equal(fs.existsSync(`${imagePath}.json`), false, 'sidecar 应一并删除')
+  assert.equal(fs.existsSync(thumbFile), false, '缩略图缓存应一并清掉')
 
   const listAfterDelete = await get('/comfyui-album/api/items?limit=10&refresh=1')
   assert.equal(listAfterDelete.body.total, 0, '删除后不该再列出')

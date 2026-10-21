@@ -59,16 +59,15 @@ window.__ModuleLoader__.load({
         truncated: '图片太多，只列出了前面一部分。',
         exported: '已导出',
         remove: '删除',
-        removeTitle: '删除这张图片？',
-        removeBody: '会同时删除同名的元数据文件（.json），无法撤销。',
-        removeConfirm: '确认删除',
+        removeTitle: '彻底删除这张图片？',
+        removeBody: '会从磁盘直接删除图片与同名元数据文件，不进回收站，也无法恢复。',
+        removeConfirm: '彻底删除',
         cancel: '取消',
         removed: '已删除',
         mergeDuplicates: '合并重复',
         duplicates: '同图副本',
-        duplicateHint: '另有 {n} 份副本在别的路径，这里只删除当前这一份。',
+        duplicateHint: '这张图还有 {n} 份副本，会一并删除。',
         duplicateBadge: '同图副本 {n} 份，已合并显示',
-        deleteCopiesToo: '连同其余 {n} 份副本一起删除',
       },
       en: {
         title: 'Gallery',
@@ -107,16 +106,15 @@ window.__ModuleLoader__.load({
         truncated: 'Too many images; only the first batch is listed.',
         exported: 'Exported',
         remove: 'Delete',
-        removeTitle: 'Delete this image?',
-        removeBody: 'Its metadata file (.json) is deleted too. This cannot be undone.',
-        removeConfirm: 'Delete',
+        removeTitle: 'Delete this image permanently?',
+        removeBody: 'Removes the image and its metadata file from disk. No trash, no undo.',
+        removeConfirm: 'Delete permanently',
         cancel: 'Cancel',
         removed: 'Deleted',
         mergeDuplicates: 'Merge duplicates',
         duplicates: 'Copies',
-        duplicateHint: '{n} more copies live elsewhere; only this one is deleted.',
+        duplicateHint: 'Its {n} copies are deleted too.',
         duplicateBadge: '{n} copies of the same image, merged',
-        deleteCopiesToo: 'Also delete the other {n} copies',
       },
     }
 
@@ -208,8 +206,6 @@ window.__ModuleLoader__.load({
       '.cfa-modal-title{font-size:13.5px;font-weight:600}',
       '.cfa-modal-body{margin:0;font-size:12.5px;line-height:1.65;color:var(--dsw-alias-label-secondary)}',
       '.cfa-modal-name{padding:7px 9px;border-radius:8px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);font-size:11.5px;word-break:break-all}',
-      '.cfa-check{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dsw-alias-label-primary);cursor:pointer}',
-      '.cfa-check input{width:14px;height:14px;accent-color:var(--dsw-alias-state-error-primary);cursor:pointer;margin:0}',
       '.cfa-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}',
       '.cfa-btn-solid-danger{border:1px solid var(--dsw-alias-state-error-primary);background:var(--dsw-alias-state-error-primary);color:#fff;border-radius:8px;padding:5px 12px;font-size:12.5px;font-family:inherit;cursor:pointer}',
       '.cfa-btn-solid-danger:hover{filter:brightness(1.08)}',
@@ -494,7 +490,6 @@ window.__ModuleLoader__.load({
       const item = props.item
       const extraCopies = typeof item.duplicateCount === 'number' && item.duplicateCount > 1
       const copyCount = extraCopies ? Math.min((item.duplicates || []).length, item.duplicateCount - 1) : 0
-      const [withCopies, setWithCopies] = React.useState(false)
       return h('div', {
         className: 'cfa-modal',
         onClick: busy ? undefined : props.onCancel,
@@ -506,22 +501,12 @@ window.__ModuleLoader__.load({
           ? h('p', { className: 'cfa-modal-body' }, t('duplicateHint').replace('{n}', String(copyCount)))
           : null,
         h('div', { className: 'cfa-modal-name' }, item.name),
-        copyCount > 0
-          ? h('label', { className: 'cfa-check' },
-            h('input', {
-              type: 'checkbox',
-              checked: withCopies,
-              disabled: busy,
-              onChange: event => setWithCopies(event.target.checked),
-            }),
-            h('span', null, t('deleteCopiesToo').replace('{n}', String(copyCount))))
-          : null,
         h('div', { className: 'cfa-modal-actions' },
           h('button', { type: 'button', className: 'cfa-chip', onClick: props.onCancel, disabled: busy }, t('cancel')),
           h('button', {
             type: 'button',
             className: 'cfa-btn-solid-danger',
-            onClick: () => props.onConfirm(withCopies),
+            onClick: () => props.onConfirm(),
             disabled: busy,
           }, t('removeConfirm')))))
     }
@@ -681,15 +666,13 @@ window.__ModuleLoader__.load({
 
       const removeBusyKey = pendingDelete === null ? '' : 'remove:' + pendingDelete.path
 
-      const confirmRemove = async (withCopies) => {
+      const confirmRemove = async () => {
         const target = pendingDelete
         if (target === null || busy === 'remove:' + target.path) return
         setBusy('remove:' + target.path)
         try {
-          const paths = [target.path]
-          if (withCopies === true) {
-            for (const extra of target.duplicates || []) paths.push(extra)
-          }
+          // 删除就是彻底删：主项与它的全部副本一起从磁盘移除，不留任何一份。
+          const paths = [target.path, ...(target.duplicates || [])]
           const removed = []
           for (const one of paths) {
             const res = await fetch(API + '/delete?path=' + encodeURIComponent(one), { method: 'POST' })

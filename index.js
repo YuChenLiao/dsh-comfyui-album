@@ -228,6 +228,24 @@ function loadSharp() {
   return sharpPromise
 }
 
+/** 缩略图缓存目录。 */
+function thumbDir() {
+  return path.join(os.tmpdir(), 'dsh-comfyui-album-thumbs')
+}
+
+/**
+ * 一张图对应的缩略图缓存路径（按路径 + mtime + 大小 + 边长定键）。
+ * @param {string} target 原图绝对路径。
+ * @param {import('node:fs').Stats} stat 原图 stat。
+ * @returns {string} 缩略图路径。
+ */
+function thumbPathFor(target, stat) {
+  const key = crypto.createHash('sha1')
+    .update(`${target.toLowerCase()}|${stat.mtimeMs}|${stat.size}|${THUMB_EDGE}`)
+    .digest('hex')
+  return path.join(thumbDir(), `${key}.webp`)
+}
+
 /**
  * 生成（或复用）一张图片的缩略图。
  * @param {string} target 原图绝对路径。
@@ -237,11 +255,8 @@ function loadSharp() {
 async function ensureThumb(target, stat) {
   const sharp = await loadSharp()
   if (sharp === null) return undefined
-  const key = crypto.createHash('sha1')
-    .update(`${target.toLowerCase()}|${stat.mtimeMs}|${stat.size}|${THUMB_EDGE}`)
-    .digest('hex')
-  const dir = path.join(os.tmpdir(), 'dsh-comfyui-album-thumbs')
-  const file = path.join(dir, `${key}.webp`)
+  const dir = thumbDir()
+  const file = thumbPathFor(target, stat)
   try {
     if (fs.statSync(file).size > 0) return file
   } catch { /* 还没生成，往下走 */ }
@@ -528,6 +543,7 @@ function createHandler(ctx, settings) {
       return
     }
     const sidecar = `${target}.json`
+    const thumb = thumbPathFor(target, stat)
     const removed = []
     try {
       fs.unlinkSync(target)
@@ -544,6 +560,10 @@ function createHandler(ctx, settings) {
         removed.push(sidecar)
       }
     } catch { /* 保留孤儿 sidecar，下次扫描不会再列出它 */ }
+    // 缩略图是纯派生缓存：一并清掉，别在临时目录里留一张被删掉图片的残影。
+    try {
+      fs.unlinkSync(thumb)
+    } catch { /* 没生成过（或已被清理）就不用管 */ }
     scanCache.clear()
     sendJson(res, 200, { ok: true, removed })
   }

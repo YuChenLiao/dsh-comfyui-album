@@ -118,9 +118,9 @@ const dupConfirmHtml = renderToStaticMarkup(React.createElement(ConfirmRemove, {
   onCancel() {},
   onConfirm() {},
 }))
-assert.match(dupConfirmHtml, /duplicateHint/, '有副本时要提醒只删当前这份')
-assert.match(dupConfirmHtml, /class="cfa-check"/, '有副本时要给「一起删除」的勾选项')
-assert.match(dupConfirmHtml, /deleteCopiesToo/)
+assert.match(dupConfirmHtml, /duplicateHint/, '有副本时要说明会一并删除')
+assert.match(dupConfirmHtml, /removeConfirm/, '确认按钮要在')
+assert.doesNotMatch(dupConfirmHtml, /type="checkbox"/, '删除是彻底删除，不提供「只删一份」的选项')
 assert.doesNotMatch(confirmHtml, /disabled/, '未提交时按钮不该禁用')
 
 // ── Gallery：首屏结构（loading 骨架 + 工具栏） ──
