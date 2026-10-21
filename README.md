@@ -50,12 +50,14 @@ dsh plugin --profile <profile> add link:/path/to/dsh-comfyui-album
 
 ## 它怎么找图
 
-不建数据库 —— 相册直接扫磁盘上的产物：
+不建数据库 —— 相册直接扫磁盘上的产物。元数据有两个来源，按顺序取：
 
-- 图片（`.png` / `.jpg` / `.webp` / `.gif` / `.avif` / `.bmp`）
-- 同名 sidecar `<图片>.json`（`dsh-comfyui-image` 的 `writeMetadata` 默认开启，里面带 prompt、负向提示词、seed、尺寸、步数、CFG、模型、采样器和完整 workflow）
+1. **同名 sidecar** `<图片>.json`：`dsh-comfyui-image` 生成时写下的完整记录（`writeMetadata` 默认开启），带 prompt、负向提示词、seed、尺寸、步数、CFG、模型、采样器和完整 workflow。
+2. **PNG 内嵌工作流**：ComfyUI 自己 `SaveImage` 出来的图（例如直接用 ComfyUI 出的角色图）没有 sidecar，但 PNG 的 `tEXt` 里就有 `prompt` 工作流。宿主只读文件头 64KB 把它解析成同样的字段，所以这类图同样能进相册、复制提示词、导出工作流。
 
-默认只看带 sidecar 的图（也就是这个插件真正生成的那些）；面板上的「仅生成图 / 含全部图片」可以切换成目录里的所有图片。
+支持的图片扩展名：`.png` `.jpg` `.jpeg` `.webp` `.gif` `.avif` `.bmp`（内嵌解析只对 PNG 生效）。
+
+默认只列**能读到元数据**的图（sidecar 或内嵌其一）；面板上的「仅生成图 / 含全部图片」可以切换成目录里的所有图片。
 
 扫描根目录：显式配置 → 当前工作目录 → 全部 workspace → `dsh-comfyui-image` 配置里的 `outputDir` → 进程 cwd。一轮扫描按目录缓存 4 秒，面板上的刷新按钮会强制重扫。
 
@@ -113,6 +115,8 @@ npm test
 - 「添加到当前对话」走的是宿主自己的粘贴链路（向输入框派发带 `File` 的 `paste` 事件），和用户手动 Ctrl+V 完全一致；找不到输入框时会退化成「图片已复制到剪贴板」。
 - 剪贴板写入需要安全上下文（`127.0.0.1` 满足），浏览器拒绝时会给出明确提示。
 - 删除是直接 `unlink`，不进回收站；确认框是唯一的防线，删之前想清楚。
+- 内嵌场景的正负提示词靠 `KSampler` 的 `positive` / `negative` 连线回溯（最多三层）；工作流里找不到这条连线时，退化为“第一个文本当正向、最后一个当负向”，多段拼接的提示词可能被拆开。
+- 内嵌场景的尺寸取 PNG 的 IHDR（真实像素），工作流里 `EmptyLatentImage` 声明的尺寸只在拿不到 IHDR 时兜底。
 - 缩略图对 GIF 只取首帧；大图预览仍然是原图。
 
 ## 致谢

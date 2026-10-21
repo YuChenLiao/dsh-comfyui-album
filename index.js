@@ -313,7 +313,10 @@ function createHandler(ctx, settings) {
 
     const items = []
     for (const { file, label } of merged) {
+      // 先按扫描阶段的分类过滤，默认模式就不必为普通图片读一遍元数据。
+      if (!includeBare && file.generated !== true) continue
       const item = toListItem(file, label)
+      // 兜底：探测到内嵌块但完整解析失败时，这里仍会把它挡在「仅生成图」之外。
       if (!includeBare && item.hasMeta !== true) continue
       if (query !== '') {
         const haystack = `${item.name} ${item.prompt ?? ''} ${item.negativePrompt ?? ''}`.toLowerCase()

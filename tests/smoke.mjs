@@ -2,15 +2,62 @@
  * 本地自检：用真实 HTTP 请求验证宿主 API 的契约（不启动 DSH）。
  *
  * 覆盖：/items（含元数据摘要与筛选）、/meta、/workflow 下载头、/file 字节、
- * 路径越权 403、未知路由 404、非 GET 405。
+ * PNG 内嵌工作流（没有 sidecar 的 ComfyUI 直出图）、路径越权 403、未知路由 404、
+ * 非 GET 405、以及删除的全部边界。
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
+import zlib from 'node:zlib'
 
 import { apply } from '../index.js'
+
+/** CRC32（PNG chunk 需要）。 */
+function crc32(buffer) {
+  const table = crc32.table ?? (crc32.table = (() => {
+    const values = new Int32Array(256)
+    for (let n = 0; n < 256; n += 1) {
+      let c = n
+      for (let k = 0; k < 8; k += 1) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1)
+      values[n] = c
+    }
+    return values
+  })())
+  let crc = -1
+  for (let i = 0; i < buffer.length; i += 1) crc = (crc >>> 8) ^ table[(crc ^ buffer[i]) & 0xff]
+  return (crc ^ -1) >>> 0
+}
+
+/** 拼一个带 tEXt 块的 PNG（模拟 ComfyUI SaveImage 的产物）。 */
+function buildPng(textGraph, width = 1, height = 1) {
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4)
+    length.writeUInt32BE(data.length)
+    const typeBuffer = Buffer.from(type, 'ascii')
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(Buffer.concat([typeBuffer, data])))
+    return Buffer.concat([length, typeBuffer, data, crc])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr[8] = 8
+  ihdr[9] = 2
+  const raw = Buffer.alloc((width * 3 + 1) * height)
+  const text = Buffer.concat([
+    Buffer.from('prompt\0', 'latin1'),
+    Buffer.from(JSON.stringify(textGraph), 'latin1'),
+  ])
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('tEXt', text),
+    chunk('IDAT', zlib.deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cfa-smoke-'))
 const nested = path.join(root, 'out')
@@ -177,7 +224,49 @@ try {
   const delAgain = await fetch(origin + '/comfyui-album/api/delete?path=' + encodeURIComponent(imagePath), { method: 'POST' })
   assert.equal(delAgain.status, 404)
 
-  console.log('smoke: 全部通过（列表/筛选/分页/元数据/工作流/图片/缩略图 + 删除边界）')
+  // ── PNG 内嵌工作流：没有 sidecar 的 ComfyUI 直出图，也要算「生成图」 ──
+  const graph = {
+    1: { class_type: 'UNETLoader', inputs: { unet_name: 'moss_image_base_int8_convrot.safetensors' } },
+    2: { class_type: 'CLIPTextEncode', inputs: { text: 'whale-chan by the window, soft light' } },
+    3: { class_type: 'CLIPTextEncode', inputs: { text: 'blurry, lowres' } },
+    4: { class_type: 'EmptyLatentImage', inputs: { width: 832, height: 1216 } },
+    5: {
+      class_type: 'KSampler',
+      inputs: {
+        seed: 123456, steps: 12, cfg: 1.5, sampler_name: 'euler', scheduler: 'normal',
+        positive: ['2', 0], negative: ['3', 0], model: ['1', 0],
+      },
+    },
+  }
+  const embeddedPath = path.join(root, 'whalechan_embedded.png')
+  fs.writeFileSync(embeddedPath, buildPng(graph, 4, 4))
+
+  const embeddedList = await get('/comfyui-album/api/items?limit=10&refresh=1')
+  assert.equal(embeddedList.body.total, 1, '内嵌工作流的图应出现在「仅生成图」里')
+  const embedded = embeddedList.body.items[0]
+  assert.equal(embedded.name, 'whalechan_embedded.png')
+  assert.equal(embedded.metaSource, 'embedded', '元数据来源应标为 embedded')
+  assert.equal(embedded.prompt, 'whale-chan by the window, soft light', '应取 KSampler 的 positive 节点文本')
+  assert.equal(embedded.negativePrompt, 'blurry, lowres', '应取 KSampler 的 negative 节点文本')
+  assert.equal(embedded.seed, 123456)
+  assert.equal(embedded.steps, 12)
+  assert.equal(embedded.cfgScale, 1.5)
+  // 尺寸取 PNG 的 IHDR（4x4），而不是工作流里 EmptyLatentImage 声明的 832x1216：
+  // 内嵌场景没有 sidecar，真实像素才是可信来源。
+  assert.equal(embedded.width, 4)
+  assert.equal(embedded.height, 4)
+  assert.equal(embedded.checkpoint, 'moss_image_base_int8_convrot.safetensors')
+  assert.equal(embedded.workflow, true)
+
+  const embeddedMeta = await get('/comfyui-album/api/meta?path=' + encodeURIComponent(embeddedPath))
+  assert.equal(embeddedMeta.status, 200)
+  assert.equal(embeddedMeta.body.meta.seed, 123456)
+
+  const embeddedWorkflow = await get('/comfyui-album/api/workflow?path=' + encodeURIComponent(embeddedPath))
+  assert.equal(embeddedWorkflow.status, 200)
+  assert.deepEqual(embeddedWorkflow.body, graph, '导出的工作流应与内嵌的一致')
+
+  console.log('smoke: 全部通过（列表/筛选/分页/元数据/工作流/图片/缩略图/内嵌工作流 + 删除边界）')
 } finally {
   server.close()
   process.chdir(previousCwd)
