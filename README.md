@@ -10,6 +10,18 @@
 | `dsh-comfyui-image` | **配套（相册的数据来源）**：读取它落盘的图片与同名 `<图片>.json` sidecar，以及它配置里的 `outputDir`。不 import 它的任何代码，所以它升级不会把相册拖垮；没装时相册只会是空的。 | [wbb316/dsh-comfyui-image](https://github.com/wbb316/dsh-comfyui-image) |
 | `dsh-better-sidebar` | **可选（增强入口）**：检测到它的 `ctx.betterSidebar` 服务时，把相册注册成一个侧栏页签（`comfyui-album:gallery`），可在其 `+` 菜单或原生右栏里打开。没装时这段注册静默缺席，不影响主侧边栏入口。 | [omdsh-dev/DSH-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) |
 
+## 安装
+
+```sh
+# 从 GitHub 安装（<profile> 换成你的 profile 名，常见的是 desktop 或 web）
+dsh plugin --profile <profile> add github:YuChenLiao/dsh-comfyui-album
+
+# 本地开发：直接把目录 link 进 profile
+dsh plugin --profile <profile> add link:/path/to/dsh-comfyui-album
+```
+
+装完刷新一下页面（Web GUI 要重新加载客户端 bundle）。已在 DSH `0.2.1-rc.2` 上验证；前置是先装好 [`dsh-comfyui-image`](https://github.com/wbb316/dsh-comfyui-image)，否则相册里没有东西可看。
+
 ## 界面
 
 ### 入口
