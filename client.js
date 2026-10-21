@@ -800,6 +800,7 @@ window.__ModuleLoader__.load({
       }
 
       const selectAllShown = () => setSelected(new Set(itemsRef.current.map(entry => entry.path)))
+      const selectNone = () => setSelected(new Set())
 
       const bulkExport = async () => {
         const chosen = selectedItems()
