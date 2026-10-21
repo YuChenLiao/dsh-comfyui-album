@@ -45,7 +45,7 @@ assert.deepEqual(mod.inject, ['slots'])
 assert.equal(typeof mod.apply, 'function')
 assert.ok(mod.__test, '应当导出 __test 便于自检')
 
-const { Gallery, Card, Lightbox, ConfirmRemove, metaLine, planPage } = mod.__test
+const { Gallery, Card, Lightbox, ConfirmRemove, ConfirmBulkRemove, metaLine, planPage } = mod.__test
 const t = key => key
 
 // ── Card：缩略图 + 四个悬浮动作 ──
@@ -121,6 +121,32 @@ const dupConfirmHtml = renderToStaticMarkup(React.createElement(ConfirmRemove, {
 assert.match(dupConfirmHtml, /duplicateHint/, '有副本时要说明会一并删除')
 assert.match(dupConfirmHtml, /removeConfirm/, '确认按钮要在')
 assert.doesNotMatch(dupConfirmHtml, /type="checkbox"/, '删除是彻底删除，不提供「只删一份」的选项')
+
+// ── 批量选择：选择态卡片与批量确认层 ──
+const pickHtml = renderToStaticMarkup(React.createElement(Card, {
+  item,
+  t,
+  selecting: true,
+  selected: true,
+  onToggle() {},
+  onOpen() {},
+  onAction() {},
+}))
+assert.match(pickHtml, /cfa-card cfa-selectable selected/)
+assert.match(pickHtml, /class="cfa-pick on"/)
+assert.doesNotMatch(pickHtml, /class="cfa-actions"/, '选择模式下不该出现悬浮操作条')
+
+const bulkHtml = renderToStaticMarkup(React.createElement(ConfirmBulkRemove, {
+  count: 7,
+  t,
+  busy: false,
+  onCancel() {},
+  onConfirm() {},
+}))
+assert.match(bulkHtml, /class="cfa-modal"/)
+assert.match(bulkHtml, /bulkRemoveTitle/)
+assert.match(bulkHtml, /bulkRemoveBody/)
+assert.match(bulkHtml, /class="cfa-btn-solid-danger"/)
 assert.doesNotMatch(confirmHtml, /disabled/, '未提交时按钮不该禁用')
 
 // ── Gallery：首屏结构（loading 骨架 + 工具栏） ──
@@ -164,4 +190,4 @@ const partial = planPage([...page(0, 50), ...page(50, 10)], page(50, 60), 60, 20
 assert.equal(partial.items.length, 110)
 assert.equal(partial.more, true)
 
-console.log('render: 全部通过（Card / Lightbox / Gallery / 删除确认 / 分页 / metaLine）')
+console.log('render: 全部通过（Card / Lightbox / Gallery / 删除确认 / 批量选择 / 分页 / metaLine）')

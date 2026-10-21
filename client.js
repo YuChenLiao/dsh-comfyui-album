@@ -68,6 +68,19 @@ window.__ModuleLoader__.load({
         duplicates: '同图副本',
         duplicateHint: '这张图还有 {n} 份副本，会一并删除。',
         duplicateBadge: '同图副本 {n} 份，已合并显示',
+        select: '选择',
+        exitSelect: '退出选择',
+        selectAll: '全选',
+        selectNone: '清除',
+        selectedCount: '已选 {n} 张',
+        bulkExport: '导出工作流',
+        bulkDelete: '删除',
+        bulkRemoveTitle: '彻底删除这 {n} 张图片？',
+        bulkRemoveBody: '会从磁盘删除所选图片、同名元数据、同组副本与缩略图缓存，不进回收站，无法恢复。',
+        bulkExported: '已导出 {n} 份工作流',
+        bulkExportedSkipped: '已导出 {n} 份工作流，{m} 张没有工作流被跳过',
+        bulkDeleted: '已删除 {n} 张',
+        bulkDeletePartial: '已删除 {n} 张，{m} 张失败',
       },
       en: {
         title: 'Gallery',
@@ -115,6 +128,19 @@ window.__ModuleLoader__.load({
         duplicates: 'Copies',
         duplicateHint: 'Its {n} copies are deleted too.',
         duplicateBadge: '{n} copies of the same image, merged',
+        select: 'Select',
+        exitSelect: 'Done',
+        selectAll: 'Select all',
+        selectNone: 'Clear',
+        selectedCount: '{n} selected',
+        bulkExport: 'Export workflows',
+        bulkDelete: 'Delete',
+        bulkRemoveTitle: 'Delete these {n} images permanently?',
+        bulkRemoveBody: 'Removes the selected images, their metadata, copies and thumbnail cache from disk. No trash, no undo.',
+        bulkExported: 'Exported {n} workflows',
+        bulkExportedSkipped: 'Exported {n} workflows, skipped {m} without one',
+        bulkDeleted: 'Deleted {n} images',
+        bulkDeletePartial: 'Deleted {n}, {m} failed',
       },
     }
 
@@ -193,6 +219,17 @@ window.__ModuleLoader__.load({
       '.cfa-actions .cfa-btn.cfa-danger:hover{background:var(--dsw-alias-state-error-primary);border-color:transparent;color:#fff}',
       '.cfa-dup{position:absolute;left:6px;top:6px;z-index:2;pointer-events:none;padding:1px 7px;border-radius:999px;font-size:10.5px;line-height:1.5;color:#fff;background:rgba(14,14,18,.66);border:1px solid rgba(255,255,255,.22);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}',
       '.cfa-dup-list{max-height:132px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}',
+      '.cfa-selectable{cursor:pointer}',
+      '.cfa-pick{position:absolute;left:6px;top:6px;z-index:3;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;border:1.5px solid rgba(255,255,255,.8);background:rgba(14,14,18,.5);color:#fff;font-size:12px;line-height:1;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}',
+      '.cfa-pick.on{background:var(--dsw-alias-brand-primary);border-color:transparent}',
+      '.cfa-card.selected{border-color:var(--dsw-alias-brand-primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-brand-primary) 42%,transparent)}',
+      '.cfa-bulk{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2500;display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:12px;background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-border-l2);box-shadow:0 14px 40px rgba(0,0,0,.34);flex-wrap:wrap;max-width:min(680px,92vw)}',
+      '.cfa-bulk-count{font-size:12.5px;color:var(--dsw-alias-label-primary);padding:0 4px;white-space:nowrap}',
+      '.cfa-bulk-gap{width:6px}',
+      '.cfa-bulk .cfa-chip{display:inline-flex;align-items:center;gap:5px}',
+      '.cfa-chip.cfa-bulk-danger{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent)}',
+      '.cfa-chip.cfa-bulk-danger:hover{border-color:var(--dsw-alias-state-error-primary)}',
+      '.cfa-chip[disabled]{opacity:.45;cursor:default}',
       '.cfa-cap{display:flex;flex-direction:column;gap:2px;padding:7px 9px 8px;background:var(--dsw-alias-bg-layer-1)}',
       '.cfa-prompt{font-size:11.5px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.cfa-meta{font-size:10.5px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
@@ -391,14 +428,16 @@ window.__ModuleLoader__.load({
     function Card(props) {
       const item = props.item
       const t = props.t
+      const selecting = props.selecting === true
+      const selected = props.selected === true
       const act = kind => (event) => {
         event.stopPropagation()
         event.preventDefault()
         props.onAction(kind, item)
       }
       return h('figure', {
-        className: 'cfa-card',
-        onClick: () => props.onOpen(item),
+        className: 'cfa-card' + (selecting ? ' cfa-selectable' : '') + (selecting && selected ? ' selected' : ''),
+        onClick: () => (selecting ? props.onToggle(item) : props.onOpen(item)),
         title: item.prompt || item.name,
       },
       h('img', {
@@ -409,13 +448,19 @@ window.__ModuleLoader__.load({
         decoding: 'async',
         draggable: false,
       }),
-      typeof item.duplicateCount === 'number' && item.duplicateCount > 1
+      selecting
+        ? h('span', {
+          className: 'cfa-pick' + (selected ? ' on' : ''),
+          'aria-hidden': 'true',
+        }, selected ? '✓' : '')
+        : null,
+      !selecting && typeof item.duplicateCount === 'number' && item.duplicateCount > 1
         ? h('span', {
           className: 'cfa-dup',
           title: t('duplicateBadge').replace('{n}', String(item.duplicateCount)),
         }, '×' + item.duplicateCount)
         : null,
-      h('div', { className: 'cfa-actions' },
+      selecting ? null : h('div', { className: 'cfa-actions' },
         h('button', { type: 'button', className: 'cfa-btn', title: t('copyImage'), 'aria-label': t('copyImage'), onClick: act('copyImage') }, icon('copy', 15)),
         h('button', { type: 'button', className: 'cfa-btn', title: t('copyPrompt'), 'aria-label': t('copyPrompt'), onClick: act('copyPrompt') }, icon('text', 15)),
         h('button', { type: 'button', className: 'cfa-btn', title: t('exportWorkflow'), 'aria-label': t('exportWorkflow'), onClick: act('exportWorkflow') }, icon('download', 15)),
@@ -511,6 +556,27 @@ window.__ModuleLoader__.load({
           }, t('removeConfirm')))))
     }
 
+    /** 批量删除的确认层：只报数量，逐条列出没有意义。 */
+    function ConfirmBulkRemove(props) {
+      const t = props.t
+      const busy = props.busy === true
+      return h('div', {
+        className: 'cfa-modal',
+        onClick: busy ? undefined : props.onCancel,
+      },
+      h('div', { className: 'cfa-modal-card', onClick: event => event.stopPropagation() },
+        h('div', { className: 'cfa-modal-title' }, t('bulkRemoveTitle').replace('{n}', String(props.count))),
+        h('p', { className: 'cfa-modal-body' }, t('bulkRemoveBody')),
+        h('div', { className: 'cfa-modal-actions' },
+          h('button', { type: 'button', className: 'cfa-chip', onClick: props.onCancel, disabled: busy }, t('cancel')),
+          h('button', {
+            type: 'button',
+            className: 'cfa-btn-solid-danger',
+            onClick: () => props.onConfirm(),
+            disabled: busy,
+          }, t('removeConfirm')))))
+    }
+
     function Gallery(props) {
       const t = props.t
       const visible = props.visible !== false
@@ -528,6 +594,9 @@ window.__ModuleLoader__.load({
       const [active, setActive] = React.useState(null)
       const [busy, setBusy] = React.useState('')
       const [pendingDelete, setPendingDelete] = React.useState(null)
+      const [selecting, setSelecting] = React.useState(false)
+      const [selected, setSelected] = React.useState(() => new Set())
+      const [bulkConfirmOpen, setBulkConfirmOpen] = React.useState(false)
 
       const itemsRef = React.useRef([])
       const hasMoreRef = React.useRef(false)
@@ -673,19 +742,21 @@ window.__ModuleLoader__.load({
         try {
           // 删除就是彻底删：主项与它的全部副本一起从磁盘移除，不留任何一份。
           const paths = [target.path, ...(target.duplicates || [])]
-          const removed = []
-          for (const one of paths) {
-            const res = await fetch(API + '/delete?path=' + encodeURIComponent(one), { method: 'POST' })
-            let data = null
-            try {
-              data = await res.json()
-            } catch { /* 非 JSON 错误体：用状态码 */ }
-            if (!res.ok || !data || data.ok !== true) {
-              throw new Error(data && data.message ? data.message : '删除失败：HTTP ' + res.status)
-            }
-            removed.push(one)
+          const res = await fetch(API + '/delete-many', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths }),
+          })
+          let data = null
+          try {
+            data = await res.json()
+          } catch { /* 非 JSON 错误体：用状态码 */ }
+          if (!res.ok || !data || data.ok !== true) {
+            throw new Error(data && data.message ? data.message : '删除失败：HTTP ' + res.status)
           }
-          const removedSet = new Set(removed)
+          const failure = (data.failed || [])[0]
+          if (failure !== undefined) throw new Error(failure.message || '删除失败')
+          const removedSet = new Set(data.removed || [])
           const remaining = itemsRef.current.filter(entry => !removedSet.has(entry.path))
           itemsRef.current = remaining
           setItems(remaining)
@@ -706,6 +777,114 @@ window.__ModuleLoader__.load({
       const openSidebar = () => {
         if (typeof props.openSidebar !== 'function' || props.openSidebar() === false) {
           setNotice({ kind: 'err', text: t('noSidebar') })
+        }
+      }
+
+      /* ── 批量选择 ── */
+
+      const selectedItems = () => itemsRef.current.filter(entry => selected.has(entry.path))
+
+      const toggleSelect = (item) => {
+        setSelected(previous => {
+          const next = new Set(previous)
+          if (next.has(item.path)) next.delete(item.path)
+          else next.add(item.path)
+          return next
+        })
+      }
+
+      const exitSelect = () => {
+        setSelecting(false)
+        setSelected(new Set())
+        setBulkConfirmOpen(false)
+      }
+
+      const selectAllShown = () => setSelected(new Set(itemsRef.current.map(entry => entry.path)))
+
+      const bulkExport = async () => {
+        const chosen = selectedItems()
+        if (chosen.length === 0) return
+        const paths = chosen.map(entry => entry.path)
+        setBusy('bulk:export')
+        try {
+          const res = await fetch(API + '/workflows', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths }),
+          })
+          if (!res.ok) {
+            let message = '导出失败：HTTP ' + res.status
+            try {
+              const data = await res.json()
+              if (data && data.message) message = data.message
+            } catch { /* 非 JSON 错误体 */ }
+            throw new Error(message)
+          }
+          const skipped = Number(res.headers.get('X-Album-Skipped') || '0')
+          const blob = await res.blob()
+          const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
+          download(blob, `comfyui-album-workflows-${stamp}.zip`)
+          const exported = Math.max(0, paths.length - skipped)
+          setNotice({
+            kind: 'ok',
+            text: skipped > 0
+              ? t('bulkExportedSkipped').replace('{n}', String(exported)).replace('{m}', String(skipped))
+              : t('bulkExported').replace('{n}', String(exported)),
+          })
+        } catch (error) {
+          setNotice({ kind: 'err', text: error && error.message ? error.message : String(error) })
+        } finally {
+          setBusy('')
+        }
+      }
+
+      const bulkRemove = async () => {
+        const chosen = selectedItems()
+        if (chosen.length === 0) return
+        const paths = []
+        for (const entry of chosen) {
+          paths.push(entry.path)
+          for (const extra of entry.duplicates || []) paths.push(extra)
+        }
+        setBusy('bulk:delete')
+        try {
+          const res = await fetch(API + '/delete-many', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths }),
+          })
+          let data = null
+          try {
+            data = await res.json()
+          } catch { /* 非 JSON 错误体 */ }
+          if (!res.ok || !data || data.ok !== true) {
+            throw new Error(data && data.message ? data.message : '删除失败：HTTP ' + res.status)
+          }
+          const failedSet = new Set((data.failed || []).map(entry => entry.path))
+          const chosenPaths = new Set(chosen.map(entry => entry.path))
+          const remaining = itemsRef.current.filter(entry => {
+            if (!chosenPaths.has(entry.path)) return true
+            return failedSet.has(entry.path)
+          })
+          itemsRef.current = remaining
+          setItems(remaining)
+          const failedPrimary = chosen.filter(entry => failedSet.has(entry.path)).length
+          const removedCount = chosen.length - failedPrimary
+          setTotal(value => Math.max(0, value - removedCount))
+          setActive(current => (current !== null && chosenPaths.has(current.path) ? null : current))
+          setNotice({
+            kind: failedPrimary > 0 ? 'err' : 'ok',
+            text: failedPrimary > 0
+              ? t('bulkDeletePartial').replace('{n}', String(removedCount)).replace('{m}', String(failedPrimary))
+              : t('bulkDeleted').replace('{n}', String(removedCount)),
+          })
+          setSelected(new Set())
+          setBulkConfirmOpen(false)
+          if (hasMoreRef.current && typeof loadRef.current === 'function') loadRef.current(false)
+        } catch (error) {
+          setNotice({ kind: 'err', text: error && error.message ? error.message : String(error) })
+        } finally {
+          setBusy('')
         }
       }
 
@@ -746,6 +925,12 @@ window.__ModuleLoader__.load({
               title: t('mergeDuplicates'),
               onClick: () => setMergeDuplicates(!mergeDuplicates),
             }, t('mergeDuplicates')),
+            h('button', {
+              type: 'button',
+              className: 'cfa-chip' + (selecting ? ' on' : ''),
+              title: selecting ? t('exitSelect') : t('select'),
+              onClick: () => (selecting ? exitSelect() : setSelecting(true)),
+            }, selecting ? t('exitSelect') : t('select')),
             h('button', { type: 'button', className: 'cfa-btn', title: t('refresh'), 'aria-label': t('refresh'), onClick: () => loadRef.current(true) }, icon('refresh', 15)),
             props.embedded === true
               ? null
@@ -762,6 +947,9 @@ window.__ModuleLoader__.load({
               key: item.path,
               item,
               t,
+              selecting,
+              selected: selected.has(item.path),
+              onToggle: toggleSelect,
               onOpen: setActive,
               onAction: runAction,
             })))
@@ -775,6 +963,26 @@ window.__ModuleLoader__.load({
             : null,
           truncated ? h('div', { className: 'cfa-hint' }, t('truncated')) : null),
         notice ? h('div', { className: 'cfa-notice' + (notice.kind === 'err' ? ' err' : '') }, notice.text) : null,
+        selecting
+          ? h('div', { className: 'cfa-bulk' },
+            h('span', { className: 'cfa-bulk-count' }, t('selectedCount').replace('{n}', String(selected.size))),
+            h('button', { type: 'button', className: 'cfa-chip', onClick: selectAllShown }, t('selectAll')),
+            h('button', { type: 'button', className: 'cfa-chip', onClick: selectNone }, t('selectNone')),
+            h('span', { className: 'cfa-bulk-gap' }),
+            h('button', {
+              type: 'button',
+              className: 'cfa-chip',
+              disabled: selected.size === 0 || busy.startsWith('bulk:'),
+              onClick: bulkExport,
+            }, icon('download', 14), ' ', t('bulkExport')),
+            h('button', {
+              type: 'button',
+              className: 'cfa-chip cfa-bulk-danger',
+              disabled: selected.size === 0 || busy.startsWith('bulk:'),
+              onClick: () => setBulkConfirmOpen(true),
+            }, icon('trash', 14), ' ', t('bulkDelete')),
+            h('button', { type: 'button', className: 'cfa-chip', onClick: exitSelect }, t('exitSelect')))
+          : null,
         active ? h(Lightbox, { item: active, t, onClose: () => setActive(null), onAction: runAction }) : null,
         pendingDelete !== null
           ? h(ConfirmRemove, {
@@ -783,6 +991,15 @@ window.__ModuleLoader__.load({
             busy: busy === removeBusyKey,
             onCancel: () => { if (busy !== removeBusyKey) setPendingDelete(null) },
             onConfirm: confirmRemove,
+          })
+          : null,
+        bulkConfirmOpen && selecting
+          ? h(ConfirmBulkRemove, {
+            count: selected.size,
+            t,
+            busy: busy === 'bulk:delete',
+            onCancel: () => { if (busy !== 'bulk:delete') setBulkConfirmOpen(false) },
+            onConfirm: bulkRemove,
           })
           : null)
     }
@@ -904,7 +1121,7 @@ window.__ModuleLoader__.load({
     }
 
     const exports = { name: 'dsh-comfyui-album', inject: ['slots'], apply }
-    exports.__test = { Gallery, Card, Lightbox, ConfirmRemove, metaLine, planPage, addToConversation, pasteFile, findComposerEditor, DICT, CSS }
+    exports.__test = { Gallery, Card, Lightbox, ConfirmRemove, ConfirmBulkRemove, metaLine, planPage, addToConversation, pasteFile, findComposerEditor, DICT, CSS }
     return exports
   },
 })

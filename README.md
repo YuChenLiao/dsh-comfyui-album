@@ -84,6 +84,16 @@ dsh plugin --profile <profile> add link:/path/to/dsh-comfyui-album
 | 添加到当前对话 | 先切回对话，再以「粘贴图片」的方式把图放进输入框草稿（等你补文字再发） |
 | 删除 | 彻底删除：图片、同名 sidecar、同组副本与缩略图缓存一起从磁盘移除，不进回收站，无法恢复 |
 
+## 批量操作
+
+工具栏的「选择」进入选择模式：卡片点击变成勾选，悬浮操作条隐藏，底部浮出一条操作栏。
+
+- 全选当前已加载的图片，或一键清除。
+- **导出工作流**：把所有选中图的工作流打成一个 ZIP（`comfyui-album-workflows-<时间戳>.zip`）。没有工作流的图会被跳过，提示里会报跳过数量。
+- **删除**：二次确认后从磁盘彻底删除所选图片、同名元数据、同组副本与缩略图缓存。部分失败会单独计数，不会整体回滚。
+
+单次批量上限 500 条（防止误选整库）。退出选择模式即清空选择。
+
 ## 配置
 
 在 profile 的 `cordis.patch.yml` 里给本插件那行加 `config`：
@@ -108,9 +118,11 @@ dsh plugin --profile <profile> add link:/path/to/dsh-comfyui-album
 - `GET /meta?path=` — 单张图片的完整元数据（sidecar 或 PNG 内嵌）
 - `GET /workflow?path=` — 工作流下载
 - `GET /file?path=&thumb=1` — 图片字节（`thumb=1` 取缩略图）
-- `POST /delete?path=` — 删除图片与同名 sidecar，返回 `{ ok, removed }`（唯一写接口）
+- `POST /delete?path=` — 删除图片与同名 sidecar，返回 `{ ok, removed }`
+- `POST /delete-many` — body `{ paths: [...] }`（1–500 条），返回 `{ ok, removed, failed }`，逐条物理删除、部分失败不回滚
+- `POST /workflows` — body `{ paths: [...] }`，把所选图片的工作流打成 ZIP 返回（`X-Album-Skipped` 头给出跳过数量）
 
-`path` 一律校验必须落在白名单根目录内，越界返回 403；`/delete` 只接受 `POST`/`DELETE`，其它接口只读（非 `GET`/`HEAD` 一律 405）。
+`path` 一律校验必须落在白名单根目录内，越界返回 403；写接口只接受 `POST`/`DELETE`，读取接口只接受 `GET`/`HEAD`（否则 405）。
 
 ## 自检
 

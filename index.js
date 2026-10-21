@@ -365,6 +365,107 @@ function dedupeItems(items) {
   return result
 }
 
+/** ZIP 用的 CRC32 查表。 */
+const CRC_TABLE = (() => {
+  const table = new Int32Array(256)
+  for (let n = 0; n < 256; n += 1) {
+    let c = n
+    for (let k = 0; k < 8; k += 1) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1)
+    table[n] = c
+  }
+  return table
+})()
+
+/**
+ * @param {Buffer} buffer 数据。
+ * @returns {number} CRC32。
+ */
+function crc32(buffer) {
+  let crc = -1
+  for (let i = 0; i < buffer.length; i += 1) crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ buffer[i]) & 0xff]
+  return (crc ^ -1) >>> 0
+}
+
+/**
+ * 打一个「仅存储、不压缩」的 ZIP。
+ *
+ * 只为批量导出工作流服务：JSON 本身很小，省掉压缩依赖比省几百字节更重要。
+ * @param {Array<{ name: string, data: Buffer }>} entries 文件条目。
+ * @returns {Buffer} ZIP 字节。
+ */
+function buildZip(entries) {
+  const locals = []
+  const central = []
+  let offset = 0
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name, 'utf8')
+    const crc = crc32(entry.data)
+    const local = Buffer.alloc(30)
+    local.writeUInt32LE(0x04034b50, 0)
+    local.writeUInt16LE(20, 4)
+    local.writeUInt16LE(0x0800, 6) // 文件名按 UTF-8 解释
+    local.writeUInt32LE(crc, 14)
+    local.writeUInt32LE(entry.data.length, 18)
+    local.writeUInt32LE(entry.data.length, 22)
+    local.writeUInt16LE(name.length, 26)
+    locals.push(local, name, entry.data)
+
+    const header = Buffer.alloc(46)
+    header.writeUInt32LE(0x02014b50, 0)
+    header.writeUInt16LE(20, 4)
+    header.writeUInt16LE(20, 6)
+    header.writeUInt16LE(0x0800, 8)
+    header.writeUInt32LE(crc, 16)
+    header.writeUInt32LE(entry.data.length, 20)
+    header.writeUInt32LE(entry.data.length, 24)
+    header.writeUInt16LE(name.length, 28)
+    header.writeUInt32LE(offset, 42)
+    central.push(header, name)
+
+    offset += local.length + name.length + entry.data.length
+  }
+  const centralBuffer = Buffer.concat(central)
+  const end = Buffer.alloc(22)
+  end.writeUInt32LE(0x06054b50, 0)
+  end.writeUInt16LE(entries.length, 8)
+  end.writeUInt16LE(entries.length, 10)
+  end.writeUInt32LE(centralBuffer.length, 12)
+  end.writeUInt32LE(offset, 16)
+  return Buffer.concat([...locals, centralBuffer, end])
+}
+
+/**
+ * 读取 JSON 请求体（上限 512KB：只用于批量路径列表）。
+ * @param {import('node:http').IncomingMessage} req 请求。
+ * @returns {Promise<Record<string, unknown>>} 解析结果。
+ */
+async function readJsonBody(req) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > 512 * 1024) throw new Error('请求体超过 512KB')
+    chunks.push(chunk)
+  }
+  if (chunks.length === 0) return {}
+  const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+}
+
+/**
+ * 从请求体里取一批路径，并做类型与数量校验。
+ * @param {unknown} body 请求体。
+ * @param {number} limit 上限。
+ * @returns {string[] | undefined} 路径列表；不合法时 undefined。
+ */
+function pathsFromBody(body, limit) {
+  const list = body !== null && typeof body === 'object' && Array.isArray(body.paths) ? body.paths : undefined
+  if (list === undefined) return undefined
+  const paths = list.filter(item => typeof item === 'string' && item !== '')
+  if (paths.length === 0 || paths.length > limit) return undefined
+  return paths
+}
+
 /**
  * 构造请求处理器。
  * @param {import('@deepseek-ai/cordis').Context} ctx 宿主上下文。
@@ -520,27 +621,27 @@ function createHandler(ctx, settings) {
     stream.pipe(res)
   }
 
-  const handleDelete = (url, res) => {
-    const roots = rootsOf(ctx, settings)
-    const target = url.searchParams.get('path') ?? ''
+  /**
+   * 物理删除一张图片及其附属文件。
+   * @param {string} target 图片绝对路径。
+   * @param {Array<{ path: string }>} roots 白名单根目录。
+   * @returns {{ target: string, removed: string[], error?: string, code?: string }} 结果。
+   */
+  const deleteOne = (target, roots) => {
     if (!isAuthorized(target, roots)) {
-      sendJson(res, 403, { ok: false, error: 'forbidden', message: '这个路径不在相册的白名单里。' })
-      return
+      return { target, removed: [], error: '这个路径不在相册的白名单里。', code: 'forbidden' }
     }
     if (!IMAGE_EXTS.has(path.extname(target).toLowerCase())) {
-      sendJson(res, 400, { ok: false, error: 'not-an-image', message: '只能删除图片，路径看起来不是图片。' })
-      return
+      return { target, removed: [], error: '只能删除图片，路径看起来不是图片。', code: 'not-an-image' }
     }
     let stat
     try {
       stat = fs.statSync(target)
     } catch {
-      sendJson(res, 404, { ok: false, error: 'missing', message: '文件已经不在了。' })
-      return
+      return { target, removed: [], error: '文件已经不在了。', code: 'missing' }
     }
     if (!stat.isFile()) {
-      sendJson(res, 400, { ok: false, error: 'not-a-file', message: '路径不是文件。' })
-      return
+      return { target, removed: [], error: '路径不是文件。', code: 'not-a-file' }
     }
     const sidecar = `${target}.json`
     const thumb = thumbPathFor(target, stat)
@@ -550,22 +651,113 @@ function createHandler(ctx, settings) {
       removed.push(target)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      sendJson(res, 500, { ok: false, error: 'delete-failed', message: `删除失败：${message}` })
-      return
+      return { target, removed, error: `删除失败：${message}`, code: 'delete-failed' }
     }
-    // sidecar 是附属品：删不掉也只是残留一个孤儿文件，不该掩盖图片已删的事实。
+    // sidecar 与缩略图都是附属品：删不掉也不该掩盖图片已删的事实。
     try {
       if (fs.existsSync(sidecar)) {
         fs.unlinkSync(sidecar)
         removed.push(sidecar)
       }
     } catch { /* 保留孤儿 sidecar，下次扫描不会再列出它 */ }
-    // 缩略图是纯派生缓存：一并清掉，别在临时目录里留一张被删掉图片的残影。
     try {
       fs.unlinkSync(thumb)
     } catch { /* 没生成过（或已被清理）就不用管 */ }
+    return { target, removed }
+  }
+
+  const statusForCode = (code) => {
+    if (code === 'forbidden') return 403
+    if (code === 'missing') return 404
+    if (code === 'delete-failed') return 500
+    return 400
+  }
+
+  const handleDelete = (url, res) => {
+    const result = deleteOne(url.searchParams.get('path') ?? '', rootsOf(ctx, settings))
+    if (result.error !== undefined) {
+      sendJson(res, statusForCode(result.code), { ok: false, error: result.code, message: result.error })
+      return
+    }
     scanCache.clear()
-    sendJson(res, 200, { ok: true, removed })
+    sendJson(res, 200, { ok: true, removed: result.removed })
+  }
+
+  /** 批量删除：逐个物理删除，部分失败也照实汇报，不整体回滚。 */
+  const handleDeleteMany = async (_url, res, req) => {
+    const roots = rootsOf(ctx, settings)
+    let body
+    try {
+      body = await readJsonBody(req)
+    } catch (error) {
+      sendJson(res, 400, { ok: false, error: 'bad-body', message: error instanceof Error ? error.message : String(error) })
+      return
+    }
+    const paths = pathsFromBody(body, 500)
+    if (paths === undefined) {
+      sendJson(res, 400, { ok: false, error: 'bad-paths', message: '请求里需要 1–500 个 paths。' })
+      return
+    }
+    const removed = []
+    const failed = []
+    for (const one of paths) {
+      const result = deleteOne(one, roots)
+      if (result.error !== undefined) failed.push({ path: one, error: result.code, message: result.error })
+      else removed.push(...result.removed)
+    }
+    scanCache.clear()
+    sendJson(res, 200, { ok: true, removed, failed })
+  }
+
+  /** 批量导出工作流：打成一个 ZIP 返回。 */
+  const handleWorkflows = async (_url, res, req) => {
+    const roots = rootsOf(ctx, settings)
+    let body
+    try {
+      body = await readJsonBody(req)
+    } catch (error) {
+      sendJson(res, 400, { ok: false, error: 'bad-body', message: error instanceof Error ? error.message : String(error) })
+      return
+    }
+    const paths = pathsFromBody(body, 500)
+    if (paths === undefined) {
+      sendJson(res, 400, { ok: false, error: 'bad-paths', message: '请求里需要 1–500 个 paths。' })
+      return
+    }
+    const entries = []
+    const used = new Set()
+    let skipped = 0
+    for (const one of paths) {
+      if (!isAuthorized(one, roots)) {
+        skipped += 1
+        continue
+      }
+      const meta = readFullSidecar(one)
+      const workflow = meta === undefined ? undefined : meta.workflow
+      if (workflow === undefined || workflow === null) {
+        skipped += 1
+        continue
+      }
+      const base = path.basename(one, path.extname(one))
+      let name = `${base}.workflow.json`
+      for (let i = 2; used.has(name); i += 1) name = `${base}-${i}.workflow.json`
+      used.add(name)
+      entries.push({ name, data: Buffer.from(`${JSON.stringify(workflow, null, 2)}\n`, 'utf8') })
+    }
+    if (entries.length === 0) {
+      sendJson(res, 404, { ok: false, error: 'no-workflow', message: '选中的图片都没有可导出的工作流。' })
+      return
+    }
+    const zip = buildZip(entries)
+    const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
+    res.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Length': zip.length,
+      'Content-Disposition': `attachment; filename="comfyui-album-workflows-${stamp}.zip"`,
+      'X-Album-Skipped': String(skipped),
+      'Cache-Control': 'no-store',
+    })
+    res.end(zip)
   }
 
   const routes = {
@@ -575,13 +767,15 @@ function createHandler(ctx, settings) {
     '/workflow': handleWorkflow,
     '/file': handleFile,
     '/delete': handleDelete,
+    '/delete-many': handleDeleteMany,
+    '/workflows': handleWorkflows,
   }
 
   return async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://127.0.0.1')
       const sub = url.pathname.slice(PREFIX.length) || '/'
-      const writable = sub === '/delete'
+      const writable = sub === '/delete' || sub === '/delete-many' || sub === '/workflows'
       const methodOk = writable
         ? (req.method === 'POST' || req.method === 'DELETE')
         : (req.method === 'GET' || req.method === 'HEAD')
@@ -589,7 +783,7 @@ function createHandler(ctx, settings) {
         sendJson(res, 405, {
           ok: false,
           error: 'method-not-allowed',
-          message: writable ? '删除接口只接受 POST / DELETE。' : '这个接口是只读的。',
+          message: writable ? '这个接口只接受 POST / DELETE。' : '这个接口是只读的。',
         })
         return
       }
@@ -602,7 +796,7 @@ function createHandler(ctx, settings) {
         sendJson(res, 404, { ok: false, error: 'unknown-route', message: `没有这个接口：${sub}` })
         return
       }
-      await route(url, res)
+      await route(url, res, req)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (!res.headersSent) sendJson(res, 500, { ok: false, error: 'internal', message })

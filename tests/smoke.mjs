@@ -301,7 +301,46 @@ try {
   const rawList = await get('/comfyui-album/api/items?limit=10&refresh=1&dedupe=0')
   assert.equal(rawList.body.total, 2, 'dedupe=0 时两份都应列出')
 
-  console.log('smoke: 全部通过（列表/筛选/分页/元数据/工作流/图片/缩略图/内嵌工作流/去重 + 删除边界）')
+  // ── 批量导出工作流：一个 ZIP，内含每张图一份 JSON ──
+  const zipRes = await fetch(origin + '/comfyui-album/api/workflows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paths: [embeddedPath, duplicatePath] }),
+  })
+  assert.equal(zipRes.status, 200)
+  assert.match(zipRes.headers.get('content-type') || '', /application\/zip/)
+  assert.match(zipRes.headers.get('content-disposition') || '', /comfyui-album-workflows-\d{14}\.zip/)
+  const zipBuffer = Buffer.from(await zipRes.arrayBuffer())
+  assert.equal(zipBuffer.subarray(0, 2).toString('latin1'), 'PK', '应当是 ZIP 文件')
+  assert.ok(zipBuffer.includes(Buffer.from('whalechan_embedded.workflow.json')), '压缩包里要有第一份工作流')
+  assert.ok(zipBuffer.includes(Buffer.from('whalechan_duplicate.workflow.json')), '压缩包里要有第二份工作流')
+  assert.equal(zipRes.headers.get('x-album-skipped'), '0')
+
+  // 没有任何工作流时明确报错，而不是给一个空包
+  const emptyZip = await fetch(origin + '/comfyui-album/api/workflows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paths: [path.join(root, 'bare.png')] }),
+  })
+  assert.equal(emptyZip.status, 404)
+
+  // ── 批量删除：一次删多条，越权项单独失败，不影响其它项 ──
+  const bulk = await fetch(origin + '/comfyui-album/api/delete-many', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paths: [embeddedPath, duplicatePath, outsideImage] }),
+  })
+  assert.equal(bulk.status, 200)
+  const bulkBody = await bulk.json()
+  assert.equal(bulkBody.failed.length, 1, '越权路径应当单独失败')
+  assert.equal(bulkBody.failed[0].error, 'forbidden')
+  assert.equal(bulkBody.removed.length, 3, '两张图 + 一个 sidecar')
+  assert.equal(fs.existsSync(embeddedPath), false)
+  assert.equal(fs.existsSync(duplicatePath), false)
+  assert.equal(fs.existsSync(`${duplicatePath}.json`), false)
+  assert.equal(fs.existsSync(outsideImage), true, '白名单外的文件不能被删')
+
+  console.log('smoke: 全部通过（列表/筛选/分页/元数据/工作流/图片/缩略图/内嵌工作流/去重/批量导出/批量删除 + 删除边界）')
 } finally {
   server.close()
   process.chdir(previousCwd)
