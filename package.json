@@ -1,0 +1,64 @@
+{
+  "name": "dsh-comfyui-album",
+  "version": "0.1.0",
+  "description": "DSH 相册插件：把 dsh-comfyui-image 生成的图片收进相册，在侧边栏浏览；悬浮即可复制图片、复制提示词、导出工作流、加入当前对话。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "docs",
+    "tests"
+  ],
+  "scripts": {
+    "test": "node tests/smoke.mjs && node tests/render.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  },
+  "meta": {
+    "title": "ComfyUI 相册",
+    "description": "把本地 ComfyUI 生成的图片收成相册：侧边栏入口、悬浮复制图片与提示词、导出工作流、一键加入当前对话。"
+  },
+  "icon": "./icon.svg",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "comfyui",
+    "gallery",
+    "album",
+    "图片",
+    "相册"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YuChenLiao/dsh-comfyui-album.git"
+  },
+  "homepage": "https://github.com/YuChenLiao/dsh-comfyui-album#readme",
+  "bugs": {
+    "url": "https://github.com/YuChenLiao/dsh-comfyui-album/issues"
+  },
+  "license": "MIT"
+}

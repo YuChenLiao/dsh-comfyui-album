@@ -1,0 +1,144 @@
+/**
+ * 客户端静态渲染自检：在没有浏览器的前提下，用 react-dom/server 把
+ * Gallery / Card / Lightbox 渲一遍，确认组件树能构建、props 契约对得上、
+ * 关键结构（工具栏、网格、悬浮按钮、灯箱）确实出现在输出里。
+ *
+ * 不覆盖：真实交互（剪贴板、粘贴注入）、网络加载、样式在浏览器里的最终观感。
+ */
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import { createRequire } from 'node:module'
+import path from 'node:path'
+import os from 'node:os'
+
+const profilePkg = path.join(os.homedir(), '.dsh', 'profiles', 'desktop', 'package.json')
+const profileRequire = createRequire(profilePkg)
+
+// react 与 react-dom 必须同源：dsh 的安装树里存在多份 React 副本，
+// 混用会让 react-dom 认不出另一个副本产出的 element（$$typeof 不同）。
+let reactDomDir = path.dirname(profileRequire.resolve('react-dom/server'))
+while (!fs.existsSync(path.join(reactDomDir, 'package.json'))) {
+  const parent = path.dirname(reactDomDir)
+  if (parent === reactDomDir) throw new Error('找不到 react-dom 的 package.json')
+  reactDomDir = parent
+}
+const sameRequire = createRequire(path.join(reactDomDir, 'package.json'))
+const React = sameRequire('react')
+const { renderToStaticMarkup } = sameRequire('react-dom/server')
+
+let captured = null
+globalThis.window = {
+  __ModuleLoader__: {
+    load(spec) {
+      captured = spec
+    },
+  },
+}
+
+await import('../client.js?cache-bust=' + Date.now())
+assert.ok(captured, 'client.js 应当向 ModuleLoader 注册 factory')
+assert.equal(captured.id, 'dsh-comfyui-album')
+
+const mod = captured.factory(sameRequire)
+assert.equal(mod.name, 'dsh-comfyui-album')
+assert.deepEqual(mod.inject, ['slots'])
+assert.equal(typeof mod.apply, 'function')
+assert.ok(mod.__test, '应当导出 __test 便于自检')
+
+const { Gallery, Card, Lightbox, ConfirmRemove, metaLine, planPage } = mod.__test
+const t = key => key
+
+// ── Card：缩略图 + 四个悬浮动作 ──
+const item = {
+  path: 'D:\\dsh\\gallery-samples\\comfyui-20261021-162731-7eo6.png',
+  name: 'comfyui-20261021-162731-7eo6.png',
+  width: 640,
+  height: 640,
+  seed: 4058497695,
+  checkpoint: 'waiNSFWIllustrious_v140.safetensors',
+  prompt: 'a cozy lighthouse keeper room at dusk',
+  hasMeta: true,
+}
+
+const cardHtml = renderToStaticMarkup(React.createElement(Card, { item, t, onOpen() {}, onAction() {} }))
+assert.match(cardHtml, /class="cfa-card"/)
+assert.match(cardHtml, /\/comfyui-album\/api\/file\?path=D%3A%5Cdsh%5Cgallery-samples%5Ccomfyui-20261021-162731-7eo6\.png/)
+for (const key of ['copyImage', 'copyPrompt', 'exportWorkflow', 'addToChat', 'remove']) {
+  assert.match(cardHtml, new RegExp(`aria-label="${key}"`), `悬浮按钮缺少 ${key}`)
+}
+assert.match(cardHtml, /640×640/)
+assert.match(cardHtml, /seed 4058497695/)
+
+// ── metaLine：缺字段时不崩 ──
+assert.equal(metaLine({ name: 'x.png' }), 'x.png')
+assert.equal(metaLine({ name: 'x.png', width: 1, height: 2, seed: 3 }), '1×2 · seed 3')
+
+// ── Lightbox：提示词与参数都在 ──
+const lightboxHtml = renderToStaticMarkup(React.createElement(Lightbox, {
+  item: { ...item, negativePrompt: 'blurry', steps: 14, cfgScale: 6, samplerName: 'euler', scheduler: 'normal', mode: 'text2img', createdAt: '2026-10-21T16:27:31.000Z' },
+  t,
+  onClose() {},
+  onAction() {},
+}))
+assert.match(lightboxHtml, /class="cfa-lb"/)
+assert.match(lightboxHtml, /a cozy lighthouse keeper room at dusk/)
+assert.match(lightboxHtml, /blurry/)
+assert.match(lightboxHtml, /negativePrompt/)
+
+// ── 删除确认层 ──
+const confirmHtml = renderToStaticMarkup(React.createElement(ConfirmRemove, {
+  item,
+  t,
+  busy: false,
+  onCancel() {},
+  onConfirm() {},
+}))
+assert.match(confirmHtml, /class="cfa-modal"/)
+assert.match(confirmHtml, /class="cfa-modal-title"/)
+assert.match(confirmHtml, /removeBody/)
+assert.match(confirmHtml, /class="cfa-btn-solid-danger"/)
+assert.match(confirmHtml, /comfyui-20261021-162731-7eo6\.png/)
+assert.doesNotMatch(confirmHtml, /disabled/, '未提交时按钮不该禁用')
+
+// ── Gallery：首屏结构（loading 骨架 + 工具栏） ──
+const galleryHtml = renderToStaticMarkup(React.createElement(Gallery, {
+  t,
+  goToConversation() {},
+  openSidebar: () => false,
+  visible: true,
+}))
+assert.match(galleryHtml, /class="cfa-root"/)
+assert.match(galleryHtml, /class="cfa-bar"/)
+assert.match(galleryHtml, /class="cfa-hint"/, '首屏应当显示扫描提示')
+assert.match(galleryHtml, /placeholder="search"/)
+assert.doesNotMatch(galleryHtml, /class="cfa-notice"/, '首屏不该有提示条')
+
+// ── 分页决策：底部抖动的根因就在这里 ──
+const page = (from, count) => Array.from({ length: count }, (_, i) => ({ path: `p${from + i}.png` }))
+
+// 刚好够到 total → 停
+const exact = planPage(page(0, 60), page(60, 44), 60, 104)
+assert.equal(exact.items.length, 104)
+assert.equal(exact.more, false, '刚好拉完必须停手')
+
+// 还有更多 → 继续
+const more = planPage(page(0, 60), page(60, 60), 60, 200)
+assert.equal(more.items.length, 120)
+assert.equal(more.more, true)
+
+// 空批次（offset 越界）→ 停
+const empty = planPage(page(0, 104), [], 104, 104)
+assert.equal(empty.items.length, 104)
+assert.equal(empty.more, false, '空批次必须停手')
+
+// 整批重复（列表变动导致 offset 分页错位）→ 停，且不产生重复项
+const repeated = planPage(page(0, 60), page(0, 60), 60, 200)
+assert.equal(repeated.items.length, 60, '重复条目不该被追加')
+assert.equal(repeated.more, false, '没有新条目就必须停手')
+
+// 部分重复 → 追加去重后的部分，继续
+const partial = planPage([...page(0, 50), ...page(50, 10)], page(50, 60), 60, 200)
+assert.equal(partial.items.length, 110)
+assert.equal(partial.more, true)
+
+console.log('render: 全部通过（Card 9 项 / Lightbox 4 项 / Gallery 5 项 / 删除确认 6 项 / 分页 5 项 / metaLine 2 项断言）')

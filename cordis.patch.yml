@@ -1,0 +1,18 @@
+# 把本插件插进 DSH profile 的配置树（bundle 挂载声明）。
+#
+# 可调项（都在下面 config 里，改完重启即可）：
+#   roots         额外要纳入相册的目录（绝对路径）。默认已包含：当前工作目录、
+#                 全部 workspace、dsh-comfyui-image 的 outputDir、进程 cwd。
+#   maxDepth      扫描深度，默认 3（0 = 只看根目录本身）。
+#   maxItems      单个根目录最多收集多少张图，默认 4000。
+#   cacheMs       列表缓存毫秒数，默认 4000；点相册里的刷新会强制重扫。
+#   includeHidden 是否进入 .开头的目录，默认 false。
+- insert:
+    - id: dsh-comfyui-album
+      name: dsh-comfyui-album
+      config:
+        maxDepth: 3
+        maxItems: 4000
+        cacheMs: 4000
+        includeHidden: false
+        roots: []
