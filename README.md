@@ -63,15 +63,26 @@ dsh plugin --profile <profile> add link:/path/to/dsh-comfyui-album
 
 列表里的缩略图由宿主按需生成（`sharp`，360px WebP，落盘缓存）。`sharp` 不可用时静默回退原图，不影响使用。
 
+## 重复合并
+
+同一次生成常常落两份：ComfyUI 自己 `SaveImage` 存一份，插件又另存一份（路径与文件名都不同）。相册按「seed + 像素尺寸 + 提示词前 160 字符」判断是不是同一张图，默认只显示一条：
+
+- 卡片左上角的 `×2` 角标表示还有 1 份副本，点开灯箱能看到副本的完整路径。
+- 主项优先取有 sidecar 的那份（元数据更完整），其次路径更短、修改时间更新。
+- 删除时可以勾选「连同其余 N 份副本一起删除」，不勾就只删当前这一份。
+- 工具栏的「合并重复」可以关掉，改看未合并的原始列表。
+
+没有 seed 的图不参与合并 —— 宁多勿错。
+
 ## 五个悬浮操作
 
 | 操作 | 行为 |
 | --- | --- |
 | 复制图片 | 写进系统剪贴板（非 PNG 会先转 PNG —— 剪贴板只认 PNG） |
-| 复制提示词 | 复制 sidecar 里的正向提示词 |
+| 复制提示词 | 复制 sidecar 里的正向提示词（没有 sidecar 时用 PNG 内嵌的那份） |
 | 导出工作流 | 下载 `<文件名>.workflow.json`（ComfyUI API 格式，可直接喂 `/prompt`） |
 | 添加到当前对话 | 先切回对话，再以「粘贴图片」的方式把图放进输入框草稿（等你补文字再发） |
-| 删除 | 过一层确认框，确认后删除图片与同名 sidecar（不可撤销） |
+| 删除 | 过一层确认框，确认后删除图片与同名 sidecar；有副本时可勾选一并删除（不可撤销） |
 
 ## 配置
 
@@ -93,8 +104,8 @@ dsh plugin --profile <profile> add link:/path/to/dsh-comfyui-album
 挂在 `/comfyui-album/api` 下：
 
 - `GET /roots` — 允许读取的根目录
-- `GET /items?root=&q=&offset=&limit=&all=1&refresh=1` — 相册列表
-- `GET /meta?path=` — 单张图片的完整 sidecar
+- `GET /items?root=&q=&offset=&limit=&all=1&refresh=1&dedupe=0` — 相册列表（`dedupe=0` 关闭重复合并；默认合并）
+- `GET /meta?path=` — 单张图片的完整元数据（sidecar 或 PNG 内嵌）
 - `GET /workflow?path=` — 工作流下载
 - `GET /file?path=&thumb=1` — 图片字节（`thumb=1` 取缩略图）
 - `POST /delete?path=` — 删除图片与同名 sidecar，返回 `{ ok, removed }`（唯一写接口）

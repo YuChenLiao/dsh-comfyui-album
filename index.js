@@ -22,8 +22,23 @@ export const name = 'dsh-comfyui-album'
 /** 需要的宿主服务：HTTP 路由载体。 */
 export const inject = ['webServer']
 
+/**
+ * 读当前 package.json 的版本号。
+ *
+ * 每次调用都重新读：宿主重载插件时会复用 ESM 模块缓存，把版本写死在模块顶层
+ * 会让健康检查一直报旧版本。
+ * @returns {string} 版本号。
+ */
+function readVersion() {
+  try {
+    return JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version
+  } catch {
+    return '0.0.0'
+  }
+}
+
 /** 版本号，随 package.json 走。 */
-export const VERSION = '0.1.0'
+export const VERSION = readVersion()
 
 /** API 前缀。 */
 const PREFIX = '/comfyui-album/api'
@@ -269,6 +284,73 @@ function scanRoot(root, settings, force) {
 }
 
 /**
+ * 同一张图的副本签名。
+ *
+ * 典型场景：插件跑一次 ComfyUI，ComfyUI 自己存了一份（`moss_8step_00017_.png`），
+ * 插件又把结果另存一份（`comfyui-...png`）。两张图的 seed、像素尺寸、提示词完全一致，
+ * 只有路径与文件名不同。没有 seed 的图不参与合并 —— 宁多勿错。
+ * @param {Record<string, unknown>} item 列表项。
+ * @returns {string | undefined} 签名，拿不到则为 undefined。
+ */
+function duplicateKey(item) {
+  if (typeof item.seed !== 'number') return undefined
+  const prompt = typeof item.prompt === 'string' ? item.prompt.trim().slice(0, 160) : ''
+  if (prompt === '') return undefined
+  return `${item.seed}|${item.width ?? 0}x${item.height ?? 0}|${prompt}`
+}
+
+/**
+ * 合并重复项：每组只输出一张，其余记进 `duplicates`。
+ *
+ * 谁当主项：sidecar 优先（元数据更完整）→ 路径更短（更靠近输出根）→ 修改时间更新。
+ * @param {Array<Record<string, unknown>>} items 已过滤的列表项（保持原有顺序）。
+ * @returns {Array<Record<string, unknown>>} 合并后的列表。
+ */
+function dedupeItems(items) {
+  const groups = new Map()
+  const order = []
+  for (const item of items) {
+    const key = duplicateKey(item)
+    if (key === undefined) {
+      order.push({ item, group: undefined })
+      continue
+    }
+    let group = groups.get(key)
+    if (group === undefined) {
+      group = { items: [] }
+      groups.set(key, group)
+      order.push({ item, group })
+    }
+    group.items.push(item)
+  }
+
+  const emitted = new Set()
+  const result = []
+  for (const entry of order) {
+    if (entry.group === undefined) {
+      result.push(entry.item)
+      continue
+    }
+    if (emitted.has(entry.group)) continue
+    emitted.add(entry.group)
+    const sorted = entry.group.items.slice().sort((a, b) => {
+      const bySource = (a.metaSource === 'sidecar' ? 0 : 1) - (b.metaSource === 'sidecar' ? 0 : 1)
+      if (bySource !== 0) return bySource
+      const byDepth = a.path.length - b.path.length
+      if (byDepth !== 0) return byDepth
+      return b.mtime - a.mtime
+    })
+    const primary = { ...sorted[0] }
+    if (sorted.length > 1) {
+      primary.duplicateCount = sorted.length
+      primary.duplicates = sorted.slice(1, 21).map(other => other.path)
+    }
+    result.push(primary)
+  }
+  return result
+}
+
+/**
  * 构造请求处理器。
  * @param {import('@deepseek-ai/cordis').Context} ctx 宿主上下文。
  * @param {ReturnType<typeof resolveSettings>} settings 归一化配置。
@@ -290,6 +372,7 @@ function createHandler(ctx, settings) {
     const query = (url.searchParams.get('q') ?? '').trim().toLowerCase()
     const includeBare = url.searchParams.get('all') === '1'
     const force = url.searchParams.get('refresh') === '1'
+    const mergeDuplicates = url.searchParams.get('dedupe') !== '0'
     const offset = Math.max(0, Number.parseInt(url.searchParams.get('offset') ?? '0', 10) || 0)
     const limit = Math.min(500, Math.max(1, Number.parseInt(url.searchParams.get('limit') ?? '60', 10) || 60))
 
@@ -325,13 +408,16 @@ function createHandler(ctx, settings) {
       items.push(item)
     }
 
+    const visible = mergeDuplicates ? dedupeItems(items) : items
+
     sendJson(res, 200, {
       ok: true,
-      total: items.length,
+      total: visible.length,
+      merged: mergeDuplicates,
       offset,
       limit,
       truncated,
-      items: items.slice(offset, offset + limit),
+      items: visible.slice(offset, offset + limit),
     })
   }
 
@@ -488,7 +574,7 @@ function createHandler(ctx, settings) {
         return
       }
       if (sub === '/') {
-        sendJson(res, 200, { ok: true, plugin: name, version: VERSION })
+        sendJson(res, 200, { ok: true, plugin: name, version: readVersion() })
         return
       }
       const route = routes[sub]

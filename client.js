@@ -64,6 +64,11 @@ window.__ModuleLoader__.load({
         removeConfirm: '确认删除',
         cancel: '取消',
         removed: '已删除',
+        mergeDuplicates: '合并重复',
+        duplicates: '同图副本',
+        duplicateHint: '另有 {n} 份副本在别的路径，这里只删除当前这一份。',
+        duplicateBadge: '同图副本 {n} 份，已合并显示',
+        deleteCopiesToo: '连同其余 {n} 份副本一起删除',
       },
       en: {
         title: 'Gallery',
@@ -107,6 +112,11 @@ window.__ModuleLoader__.load({
         removeConfirm: 'Delete',
         cancel: 'Cancel',
         removed: 'Deleted',
+        mergeDuplicates: 'Merge duplicates',
+        duplicates: 'Copies',
+        duplicateHint: '{n} more copies live elsewhere; only this one is deleted.',
+        duplicateBadge: '{n} copies of the same image, merged',
+        deleteCopiesToo: 'Also delete the other {n} copies',
       },
     }
 
@@ -183,6 +193,8 @@ window.__ModuleLoader__.load({
       '.cfa-actions .cfa-btn{width:27px;height:27px;color:#fff;border-color:rgba(255,255,255,.22);background:rgba(14,14,18,.62);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}',
       '.cfa-actions .cfa-btn:hover{background:var(--dsw-alias-brand-primary);border-color:transparent;color:#fff}',
       '.cfa-actions .cfa-btn.cfa-danger:hover{background:var(--dsw-alias-state-error-primary);border-color:transparent;color:#fff}',
+      '.cfa-dup{position:absolute;left:6px;top:6px;z-index:2;pointer-events:none;padding:1px 7px;border-radius:999px;font-size:10.5px;line-height:1.5;color:#fff;background:rgba(14,14,18,.66);border:1px solid rgba(255,255,255,.22);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}',
+      '.cfa-dup-list{max-height:132px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}',
       '.cfa-cap{display:flex;flex-direction:column;gap:2px;padding:7px 9px 8px;background:var(--dsw-alias-bg-layer-1)}',
       '.cfa-prompt{font-size:11.5px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.cfa-meta{font-size:10.5px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
@@ -196,6 +208,8 @@ window.__ModuleLoader__.load({
       '.cfa-modal-title{font-size:13.5px;font-weight:600}',
       '.cfa-modal-body{margin:0;font-size:12.5px;line-height:1.65;color:var(--dsw-alias-label-secondary)}',
       '.cfa-modal-name{padding:7px 9px;border-radius:8px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);font-size:11.5px;word-break:break-all}',
+      '.cfa-check{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dsw-alias-label-primary);cursor:pointer}',
+      '.cfa-check input{width:14px;height:14px;accent-color:var(--dsw-alias-state-error-primary);cursor:pointer;margin:0}',
       '.cfa-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}',
       '.cfa-btn-solid-danger{border:1px solid var(--dsw-alias-state-error-primary);background:var(--dsw-alias-state-error-primary);color:#fff;border-radius:8px;padding:5px 12px;font-size:12.5px;font-family:inherit;cursor:pointer}',
       '.cfa-btn-solid-danger:hover{filter:brightness(1.08)}',
@@ -399,6 +413,12 @@ window.__ModuleLoader__.load({
         decoding: 'async',
         draggable: false,
       }),
+      typeof item.duplicateCount === 'number' && item.duplicateCount > 1
+        ? h('span', {
+          className: 'cfa-dup',
+          title: t('duplicateBadge').replace('{n}', String(item.duplicateCount)),
+        }, '×' + item.duplicateCount)
+        : null,
       h('div', { className: 'cfa-actions' },
         h('button', { type: 'button', className: 'cfa-btn', title: t('copyImage'), 'aria-label': t('copyImage'), onClick: act('copyImage') }, icon('copy', 15)),
         h('button', { type: 'button', className: 'cfa-btn', title: t('copyPrompt'), 'aria-label': t('copyPrompt'), onClick: act('copyPrompt') }, icon('text', 15)),
@@ -451,6 +471,12 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', className: 'cfa-btn', onClick: act('addToChat') }, icon('chat', 14), t('addToChat')),
             h('button', { type: 'button', className: 'cfa-btn cfa-danger', onClick: act('remove') }, icon('trash', 14), t('remove'))),
           h('dl', { className: 'cfa-kv' }, rows),
+          typeof item.duplicateCount === 'number' && item.duplicateCount > 1
+            ? h('div', null,
+              h('div', { className: 'cfa-kv-k' }, `${t('duplicates')} · ${item.duplicateCount}`),
+              h('div', { className: 'cfa-prompt-box cfa-dup-list' },
+                (item.duplicates || []).map(other => h('div', { key: other }, other))))
+            : null,
           h('div', { className: 'cfa-kv-k' }, t('prompt')),
           h('p', { className: 'cfa-prompt-box' }, item.prompt || t('noPrompt')),
           item.negativePrompt
@@ -465,6 +491,10 @@ window.__ModuleLoader__.load({
     function ConfirmRemove(props) {
       const t = props.t
       const busy = props.busy === true
+      const item = props.item
+      const extraCopies = typeof item.duplicateCount === 'number' && item.duplicateCount > 1
+      const copyCount = extraCopies ? Math.min((item.duplicates || []).length, item.duplicateCount - 1) : 0
+      const [withCopies, setWithCopies] = React.useState(false)
       return h('div', {
         className: 'cfa-modal',
         onClick: busy ? undefined : props.onCancel,
@@ -472,10 +502,28 @@ window.__ModuleLoader__.load({
       h('div', { className: 'cfa-modal-card', onClick: event => event.stopPropagation() },
         h('div', { className: 'cfa-modal-title' }, t('removeTitle')),
         h('p', { className: 'cfa-modal-body' }, t('removeBody')),
-        h('div', { className: 'cfa-modal-name' }, props.item.name),
+        copyCount > 0
+          ? h('p', { className: 'cfa-modal-body' }, t('duplicateHint').replace('{n}', String(copyCount)))
+          : null,
+        h('div', { className: 'cfa-modal-name' }, item.name),
+        copyCount > 0
+          ? h('label', { className: 'cfa-check' },
+            h('input', {
+              type: 'checkbox',
+              checked: withCopies,
+              disabled: busy,
+              onChange: event => setWithCopies(event.target.checked),
+            }),
+            h('span', null, t('deleteCopiesToo').replace('{n}', String(copyCount))))
+          : null,
         h('div', { className: 'cfa-modal-actions' },
           h('button', { type: 'button', className: 'cfa-chip', onClick: props.onCancel, disabled: busy }, t('cancel')),
-          h('button', { type: 'button', className: 'cfa-btn-solid-danger', onClick: props.onConfirm, disabled: busy }, t('removeConfirm')))))
+          h('button', {
+            type: 'button',
+            className: 'cfa-btn-solid-danger',
+            onClick: () => props.onConfirm(withCopies),
+            disabled: busy,
+          }, t('removeConfirm')))))
     }
 
     function Gallery(props) {
@@ -485,6 +533,7 @@ window.__ModuleLoader__.load({
       const [root, setRoot] = React.useState('all')
       const [query, setQuery] = React.useState('')
       const [includeBare, setIncludeBare] = React.useState(false)
+      const [mergeDuplicates, setMergeDuplicates] = React.useState(true)
       const [items, setItems] = React.useState([])
       const [total, setTotal] = React.useState(0)
       const [truncated, setTruncated] = React.useState(false)
@@ -519,6 +568,7 @@ window.__ModuleLoader__.load({
             offset: String(offset),
             limit: String(PAGE),
             all: includeBare ? '1' : '0',
+            dedupe: mergeDuplicates ? '1' : '0',
           }
           if (root !== 'all') params.root = root
           if (query.trim() !== '') params.q = query.trim()
@@ -547,7 +597,7 @@ window.__ModuleLoader__.load({
             setLoadingMore(false)
           }
         }
-      }, [root, query, includeBare])
+      }, [root, query, includeBare, mergeDuplicates])
 
       loadRef.current = load
 
@@ -631,24 +681,34 @@ window.__ModuleLoader__.load({
 
       const removeBusyKey = pendingDelete === null ? '' : 'remove:' + pendingDelete.path
 
-      const confirmRemove = async () => {
+      const confirmRemove = async (withCopies) => {
         const target = pendingDelete
         if (target === null || busy === 'remove:' + target.path) return
         setBusy('remove:' + target.path)
         try {
-          const res = await fetch(API + '/delete?path=' + encodeURIComponent(target.path), { method: 'POST' })
-          let data = null
-          try {
-            data = await res.json()
-          } catch { /* 非 JSON 错误体：用状态码 */ }
-          if (!res.ok || !data || data.ok !== true) {
-            throw new Error(data && data.message ? data.message : '删除失败：HTTP ' + res.status)
+          const paths = [target.path]
+          if (withCopies === true) {
+            for (const extra of target.duplicates || []) paths.push(extra)
           }
-          const remaining = itemsRef.current.filter(entry => entry.path !== target.path)
+          const removed = []
+          for (const one of paths) {
+            const res = await fetch(API + '/delete?path=' + encodeURIComponent(one), { method: 'POST' })
+            let data = null
+            try {
+              data = await res.json()
+            } catch { /* 非 JSON 错误体：用状态码 */ }
+            if (!res.ok || !data || data.ok !== true) {
+              throw new Error(data && data.message ? data.message : '删除失败：HTTP ' + res.status)
+            }
+            removed.push(one)
+          }
+          const removedSet = new Set(removed)
+          const remaining = itemsRef.current.filter(entry => !removedSet.has(entry.path))
           itemsRef.current = remaining
           setItems(remaining)
+          // 合并项在列表里只占一条，所以总数减一。
           setTotal(value => Math.max(0, value - 1))
-          setActive(current => (current !== null && current.path === target.path ? null : current))
+          setActive(current => (current !== null && removedSet.has(current.path) ? null : current))
           setNotice({ kind: 'ok', text: t('removed') })
           // 删掉一条后列表短了一格：还有更多就顺手补一条，避免底部出现空档。
           if (hasMoreRef.current && typeof loadRef.current === 'function') loadRef.current(false)
@@ -697,6 +757,12 @@ window.__ModuleLoader__.load({
               title: includeBare ? t('onlyGenerated') : t('onlyGeneratedOn'),
               onClick: () => setIncludeBare(!includeBare),
             }, includeBare ? t('onlyGeneratedOn') : t('onlyGenerated')),
+            h('button', {
+              type: 'button',
+              className: 'cfa-chip' + (mergeDuplicates ? ' on' : ''),
+              title: t('mergeDuplicates'),
+              onClick: () => setMergeDuplicates(!mergeDuplicates),
+            }, t('mergeDuplicates')),
             h('button', { type: 'button', className: 'cfa-btn', title: t('refresh'), 'aria-label': t('refresh'), onClick: () => loadRef.current(true) }, icon('refresh', 15)),
             props.embedded === true
               ? null

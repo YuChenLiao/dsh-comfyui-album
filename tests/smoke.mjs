@@ -266,7 +266,30 @@ try {
   assert.equal(embeddedWorkflow.status, 200)
   assert.deepEqual(embeddedWorkflow.body, graph, '导出的工作流应与内嵌的一致')
 
-  console.log('smoke: 全部通过（列表/筛选/分页/元数据/工作流/图片/缩略图/内嵌工作流 + 删除边界）')
+  // ── 去重：同一张图的两份副本（sidecar 一份 + ComfyUI 直出一份）只出现一次 ──
+  const duplicatePath = path.join(root, 'whalechan_duplicate.png')
+  fs.writeFileSync(duplicatePath, buildPng(graph, 4, 4))
+  fs.writeFileSync(`${duplicatePath}.json`, JSON.stringify({
+    plugin: 'dsh-comfyui-image',
+    prompt: 'whale-chan by the window, soft light',
+    seed: 123456,
+    width: 4,
+    height: 4,
+    steps: 12,
+    checkpoint: 'moss_image_base_int8_convrot.safetensors',
+    workflow: graph,
+  }))
+
+  const mergedList = await get('/comfyui-album/api/items?limit=10&refresh=1')
+  assert.equal(mergedList.body.total, 1, '同签名的两份副本应合并成一条')
+  assert.equal(mergedList.body.items[0].metaSource, 'sidecar', '主项应优先选有 sidecar 的那份')
+  assert.equal(mergedList.body.items[0].duplicateCount, 2)
+  assert.ok(mergedList.body.items[0].duplicates.includes(embeddedPath), '副本路径要能被展开')
+
+  const rawList = await get('/comfyui-album/api/items?limit=10&refresh=1&dedupe=0')
+  assert.equal(rawList.body.total, 2, 'dedupe=0 时两份都应列出')
+
+  console.log('smoke: 全部通过（列表/筛选/分页/元数据/工作流/图片/缩略图/内嵌工作流/去重 + 删除边界）')
 } finally {
   server.close()
   process.chdir(previousCwd)

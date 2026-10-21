@@ -68,6 +68,17 @@ for (const key of ['copyImage', 'copyPrompt', 'exportWorkflow', 'addToChat', 're
 }
 assert.match(cardHtml, /640×640/)
 assert.match(cardHtml, /seed 4058497695/)
+assert.doesNotMatch(cardHtml, /class="cfa-dup"/, '没有副本时不该出现角标')
+
+// 副本角标
+const dupCardHtml = renderToStaticMarkup(React.createElement(Card, {
+  item: { ...item, duplicateCount: 3, duplicates: ['x.png', 'y.png'] },
+  t,
+  onOpen() {},
+  onAction() {},
+}))
+assert.match(dupCardHtml, /class="cfa-dup"/)
+assert.match(dupCardHtml, /×3/)
 
 // ── metaLine：缺字段时不崩 ──
 assert.equal(metaLine({ name: 'x.png' }), 'x.png')
@@ -98,6 +109,18 @@ assert.match(confirmHtml, /class="cfa-modal-title"/)
 assert.match(confirmHtml, /removeBody/)
 assert.match(confirmHtml, /class="cfa-btn-solid-danger"/)
 assert.match(confirmHtml, /comfyui-20261021-162731-7eo6\.png/)
+assert.doesNotMatch(confirmHtml, /duplicateHint/, '没有副本时不该提副本')
+
+const dupConfirmHtml = renderToStaticMarkup(React.createElement(ConfirmRemove, {
+  item: { ...item, duplicateCount: 3, duplicates: ['x.png', 'y.png'] },
+  t,
+  busy: false,
+  onCancel() {},
+  onConfirm() {},
+}))
+assert.match(dupConfirmHtml, /duplicateHint/, '有副本时要提醒只删当前这份')
+assert.match(dupConfirmHtml, /class="cfa-check"/, '有副本时要给「一起删除」的勾选项')
+assert.match(dupConfirmHtml, /deleteCopiesToo/)
 assert.doesNotMatch(confirmHtml, /disabled/, '未提交时按钮不该禁用')
 
 // ── Gallery：首屏结构（loading 骨架 + 工具栏） ──
