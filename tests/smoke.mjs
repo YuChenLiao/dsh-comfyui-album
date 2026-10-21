@@ -177,7 +177,7 @@ try {
   const delAgain = await fetch(origin + '/comfyui-album/api/delete?path=' + encodeURIComponent(imagePath), { method: 'POST' })
   assert.equal(delAgain.status, 404)
 
-  console.log('smoke: 全部通过（宿主 API + 越权/错误路径 + 删除 7 项断言）')
+  console.log('smoke: 全部通过（列表/筛选/分页/元数据/工作流/图片/缩略图 + 删除边界）')
 } finally {
   server.close()
   process.chdir(previousCwd)

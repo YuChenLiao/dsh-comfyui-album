@@ -141,4 +141,4 @@ const partial = planPage([...page(0, 50), ...page(50, 10)], page(50, 60), 60, 20
 assert.equal(partial.items.length, 110)
 assert.equal(partial.more, true)
 
-console.log('render: 全部通过（Card 9 项 / Lightbox 4 项 / Gallery 5 项 / 删除确认 6 项 / 分页 5 项 / metaLine 2 项断言）')
+console.log('render: 全部通过（Card / Lightbox / Gallery / 删除确认 / 分页 / metaLine）')
