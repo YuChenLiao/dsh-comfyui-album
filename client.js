@@ -81,6 +81,11 @@ window.__ModuleLoader__.load({
         bulkExportedSkipped: '已导出 {n} 份工作流，{m} 张没有工作流被跳过',
         bulkDeleted: '已删除 {n} 张',
         bulkDeletePartial: '已删除 {n} 张，{m} 张失败',
+        zoomIn: '放大',
+        zoomOut: '缩小',
+        zoomReset: '适应窗口',
+        prevImage: '上一张（←）',
+        nextImage: '下一张（→）',
       },
       en: {
         title: 'Gallery',
@@ -141,6 +146,11 @@ window.__ModuleLoader__.load({
         bulkExportedSkipped: 'Exported {n} workflows, skipped {m} without one',
         bulkDeleted: 'Deleted {n} images',
         bulkDeletePartial: 'Deleted {n}, {m} failed',
+        zoomIn: 'Zoom in',
+        zoomOut: 'Zoom out',
+        zoomReset: 'Fit to window',
+        prevImage: 'Previous (←)',
+        nextImage: 'Next (→)',
       },
     }
 
@@ -162,6 +172,10 @@ window.__ModuleLoader__.load({
       refresh: '<path d="M20.2 12a8.2 8.2 0 1 1-2.5-5.9"/><path d="M20.4 3.8v5h-5"/>',
       search: '<circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.6 15.6l4.4 4.4"/>',
       dock: '<rect x="3" y="4.2" width="18" height="15.6" rx="2.5"/><path d="M14.6 4.2v15.6"/>',
+      chevronLeft: '<path d="M14.6 5.6L8 12l6.6 6.4"/>',
+      chevronRight: '<path d="M9.4 5.6L16 12l-6.6 6.4"/>',
+      minus: '<path d="M5.5 12h13"/>',
+      plus: '<path d="M12 5.5v13"/><path d="M5.5 12h13"/>',
       trash: '<path d="M4.5 6.8h15"/><path d="M9.4 6.8V4.9a1.4 1.4 0 0 1 1.4-1.4h2.4a1.4 1.4 0 0 1 1.4 1.4v1.9"/>'
         + '<path d="M6.6 6.8l.8 12a1.8 1.8 0 0 0 1.8 1.7h5.6a1.8 1.8 0 0 0 1.8-1.7l.8-12"/>'
         + '<path d="M10.3 10.4v6.2"/><path d="M13.7 10.4v6.2"/>',
@@ -248,8 +262,18 @@ window.__ModuleLoader__.load({
       '.cfa-btn-solid-danger:hover{filter:brightness(1.08)}',
       '.cfa-btn-solid-danger[disabled]{opacity:.5;cursor:default}',
       '.cfa-lb{position:fixed;inset:0;z-index:2600;display:flex;gap:16px;padding:20px;background:rgba(8,8,11,.76);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}',
-      '.cfa-lb-stage{flex:1;min-width:0;display:flex;align-items:center;justify-content:center}',
-      '.cfa-lb-stage img{max-width:100%;max-height:calc(100vh - 40px);border-radius:10px;box-shadow:0 24px 70px rgba(0,0,0,.5)}',
+      '.cfa-lb-stage{position:relative;overflow:hidden;flex:1;min-width:0;display:flex;align-items:center;justify-content:center}',
+      '.cfa-lb-img{max-width:100%;max-height:calc(100vh - 40px);border-radius:10px;box-shadow:0 24px 70px rgba(0,0,0,.5);user-select:none;touch-action:none;will-change:transform}',
+      '.cfa-lb-img.dragging{cursor:grabbing}',
+      '.cfa-lb-nav{position:absolute;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(14,14,18,.6);color:#fff;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:background .12s ease}',
+      '.cfa-lb-nav:hover{background:var(--dsw-alias-brand-primary);border-color:transparent}',
+      '.cfa-lb-nav.prev{left:12px}',
+      '.cfa-lb-nav.next{right:12px}',
+      '.cfa-lb-count{position:absolute;top:10px;left:50%;transform:translateX(-50%);padding:2px 9px;border-radius:999px;font-size:11.5px;color:#fff;background:rgba(14,14,18,.6);border:1px solid rgba(255,255,255,.16);font-variant-numeric:tabular-nums}',
+      '.cfa-lb-zoom{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:10px;background:rgba(14,14,18,.66);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}',
+      '.cfa-lb-zbtn{display:grid;place-items:center;width:24px;height:24px;border-radius:6px;border:none;background:transparent;color:#fff;cursor:pointer;padding:0}',
+      '.cfa-lb-zbtn:hover{background:rgba(255,255,255,.14)}',
+      '.cfa-lb-zvalue{min-width:50px;border:none;background:transparent;color:#fff;font-size:11.5px;cursor:pointer;font-variant-numeric:tabular-nums;font-family:inherit}',
       '.cfa-lb-side{width:344px;flex:none;display:flex;flex-direction:column;gap:12px;padding:14px 15px;border-radius:12px;overflow:auto;background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary)}',
       '.cfa-lb-head{display:flex;align-items:center;gap:8px;justify-content:space-between}',
       '.cfa-lb-head strong{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
@@ -261,7 +285,7 @@ window.__ModuleLoader__.load({
       '.cfa-kv-k{font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}',
       '.cfa-prompt-box{margin:0;padding:9px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto;user-select:text}',
       '@media (hover:none){.cfa-actions{opacity:1;transform:none}}',
-      '@media (max-width:820px){.cfa-lb{flex-direction:column;padding:12px}.cfa-lb-side{width:auto;max-height:44vh}.cfa-lb-stage img{max-height:62vh}}',
+      '@media (max-width:820px){.cfa-lb{flex-direction:column;padding:12px}.cfa-lb-side{width:auto;max-height:44vh}.cfa-lb-img{max-height:62vh}.cfa-lb-nav{width:34px;height:34px}}',
     ].join('\n')
 
     /* ───────────── 数据 ───────────── */
@@ -480,9 +504,84 @@ window.__ModuleLoader__.load({
       ]
     }
 
+    /** 缩放范围：0.2×–8×，避免缩到看不见或放大到丢失精度。 */
+    function clampZoom(value) {
+      return Math.min(8, Math.max(0.2, value))
+    }
+
     function Lightbox(props) {
       const item = props.item
       const t = props.t
+      const [zoom, setZoom] = React.useState(1)
+      const [pan, setPan] = React.useState({ x: 0, y: 0 })
+      const [dragging, setDragging] = React.useState(false)
+      const stageRef = React.useRef(null)
+      const dragRef = React.useRef(null)
+
+      // 换图即复位：否则上一张的缩放和位移会带到下一张。
+      React.useEffect(() => {
+        setZoom(1)
+        setPan({ x: 0, y: 0 })
+        dragRef.current = null
+        setDragging(false)
+      }, [item.path])
+
+      // React 的 onWheel 是 passive 的，preventDefault 无效，这里直接挂原生监听。
+      React.useEffect(() => {
+        const node = stageRef.current
+        if (node === null || typeof node.addEventListener !== 'function') return undefined
+        const onWheel = (event) => {
+          event.preventDefault()
+          setZoom(previous => clampZoom(previous * (event.deltaY < 0 ? 1.12 : 1 / 1.12)))
+        }
+        node.addEventListener('wheel', onWheel, { passive: false })
+        return () => node.removeEventListener('wheel', onWheel)
+      }, [item.path])
+
+      // 缩放快捷键只在灯箱打开时生效。
+      React.useEffect(() => {
+        const onKey = (event) => {
+          if (event.key === '+' || event.key === '=') {
+            event.preventDefault()
+            setZoom(previous => clampZoom(previous * 1.2))
+          } else if (event.key === '-' || event.key === '_') {
+            event.preventDefault()
+            setZoom(previous => clampZoom(previous / 1.2))
+          } else if (event.key === '0') {
+            event.preventDefault()
+            setZoom(1)
+            setPan({ x: 0, y: 0 })
+          }
+        }
+        document.addEventListener('keydown', onKey)
+        return () => document.removeEventListener('keydown', onKey)
+      }, [])
+
+      const resetZoom = () => {
+        setZoom(1)
+        setPan({ x: 0, y: 0 })
+      }
+
+      const onPointerDown = (event) => {
+        if (zoom <= 1) return
+        dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y }
+        setDragging(true)
+        if (typeof event.currentTarget.setPointerCapture === 'function') {
+          event.currentTarget.setPointerCapture(event.pointerId)
+        }
+      }
+
+      const onPointerMove = (event) => {
+        const drag = dragRef.current
+        if (drag === null) return
+        setPan({ x: drag.panX + (event.clientX - drag.x), y: drag.panY + (event.clientY - drag.y) })
+      }
+
+      const endDrag = () => {
+        dragRef.current = null
+        setDragging(false)
+      }
+
       const act = kind => (event) => {
         event.stopPropagation()
         props.onAction(kind, item)
@@ -499,8 +598,67 @@ window.__ModuleLoader__.load({
       rows.push(h(Kv, { key: 'path', k: t('filePath'), v: item.path }))
 
       return h('div', { className: 'cfa-lb', onClick: props.onClose },
-        h('div', { className: 'cfa-lb-stage', onClick: event => event.stopPropagation() },
-          h('img', { src: fileUrl(item.path), alt: item.name, draggable: false })),
+        h('div', {
+          className: 'cfa-lb-stage',
+          ref: stageRef,
+          onClick: event => event.stopPropagation(),
+          onDoubleClick: () => (zoom > 1 ? resetZoom() : setZoom(2)),
+          onPointerDown,
+          onPointerMove,
+          onPointerUp: endDrag,
+          onPointerCancel: endDrag,
+          onPointerLeave: endDrag,
+        },
+        h('img', {
+          key: item.path,
+          className: 'cfa-lb-img' + (dragging ? ' dragging' : ''),
+          src: fileUrl(item.path),
+          alt: item.name,
+          draggable: false,
+          style: {
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            cursor: zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-in',
+            transition: dragging ? 'none' : 'transform .1s ease',
+          },
+        }),
+        props.count > 1
+          ? h('button', {
+            type: 'button',
+            className: 'cfa-lb-nav prev',
+            title: t('prevImage'),
+            'aria-label': t('prevImage'),
+            onClick: (event) => { event.stopPropagation(); props.onPrev() },
+          }, icon('chevronLeft', 18))
+          : null,
+        props.count > 1
+          ? h('button', {
+            type: 'button',
+            className: 'cfa-lb-nav next',
+            title: t('nextImage'),
+            'aria-label': t('nextImage'),
+            onClick: (event) => { event.stopPropagation(); props.onNext() },
+          }, icon('chevronRight', 18))
+          : null,
+        typeof props.index === 'number' && props.count > 0
+          ? h('span', { className: 'cfa-lb-count' }, `${props.index + 1} / ${props.count}`)
+          : null,
+        h('div', { className: 'cfa-lb-zoom', onClick: event => event.stopPropagation() },
+          h('button', {
+            type: 'button',
+            className: 'cfa-lb-zbtn',
+            title: t('zoomOut'),
+            'aria-label': t('zoomOut'),
+            onClick: () => setZoom(previous => clampZoom(previous / 1.2)),
+          }, icon('minus', 14)),
+          h('button', { type: 'button', className: 'cfa-lb-zvalue', title: t('zoomReset'), onClick: resetZoom },
+            `${Math.round(zoom * 100)}%`),
+          h('button', {
+            type: 'button',
+            className: 'cfa-lb-zbtn',
+            title: t('zoomIn'),
+            'aria-label': t('zoomIn'),
+            onClick: () => setZoom(previous => clampZoom(previous * 1.2)),
+          }, icon('plus', 14)))),
         h('aside', { className: 'cfa-lb-side', onClick: event => event.stopPropagation() },
           h('div', { className: 'cfa-lb-head' },
             h('strong', { title: item.name }, item.name),
@@ -591,7 +749,7 @@ window.__ModuleLoader__.load({
       const [loading, setLoading] = React.useState(true)
       const [loadingMore, setLoadingMore] = React.useState(false)
       const [notice, setNotice] = React.useState(null)
-      const [active, setActive] = React.useState(null)
+      const [activePath, setActivePath] = React.useState(null)
       const [busy, setBusy] = React.useState('')
       const [pendingDelete, setPendingDelete] = React.useState(null)
       const [selecting, setSelecting] = React.useState(false)
@@ -695,17 +853,38 @@ window.__ModuleLoader__.load({
         return () => clearTimeout(timer)
       }, [notice])
 
+      // 灯箱按路径寻址：删除或刷新后列表变了，也能重新定位到正确的那张。
+      const activeIndex = activePath === null ? -1 : items.findIndex(entry => entry.path === activePath)
+      const activeItem = activeIndex >= 0 ? items[activeIndex] : null
+
+      const stepActive = (delta) => {
+        if (activeIndex < 0 || items.length === 0) return
+        // 首尾相接：最后一张按 → 回到第一张。
+        const next = (activeIndex + delta + items.length) % items.length
+        setActivePath(items[next].path)
+      }
+
       React.useEffect(() => {
-        if (!active) return undefined
+        if (activePath === null) return undefined
         const onKey = (event) => {
-          if (event.key !== 'Escape') return
-          // 确认层开着时，Esc 只关确认层：别把底下的灯箱一起关掉。
-          if (pendingDelete !== null) setPendingDelete(null)
-          else setActive(null)
+          if (event.key === 'Escape') {
+            // 确认层开着时，Esc 只关确认层：别把底下的灯箱一起关掉。
+            if (pendingDelete !== null) setPendingDelete(null)
+            else setActivePath(null)
+            return
+          }
+          if (pendingDelete !== null) return
+          if (event.key === 'ArrowLeft') {
+            event.preventDefault()
+            stepActive(-1)
+          } else if (event.key === 'ArrowRight') {
+            event.preventDefault()
+            stepActive(1)
+          }
         }
         document.addEventListener('keydown', onKey)
         return () => document.removeEventListener('keydown', onKey)
-      }, [active, pendingDelete])
+      }, [activePath, pendingDelete, items])
 
       const actions = {
         goToConversation: () => {
@@ -762,7 +941,7 @@ window.__ModuleLoader__.load({
           setItems(remaining)
           // 合并项在列表里只占一条，所以总数减一。
           setTotal(value => Math.max(0, value - 1))
-          setActive(current => (current !== null && removedSet.has(current.path) ? null : current))
+          setActivePath(current => (current !== null && removedSet.has(current) ? null : current))
           setNotice({ kind: 'ok', text: t('removed') })
           // 删掉一条后列表短了一格：还有更多就顺手补一条，避免底部出现空档。
           if (hasMoreRef.current && typeof loadRef.current === 'function') loadRef.current(false)
@@ -872,7 +1051,7 @@ window.__ModuleLoader__.load({
           const failedPrimary = chosen.filter(entry => failedSet.has(entry.path)).length
           const removedCount = chosen.length - failedPrimary
           setTotal(value => Math.max(0, value - removedCount))
-          setActive(current => (current !== null && chosenPaths.has(current.path) ? null : current))
+          setActivePath(current => (current !== null && chosenPaths.has(current) ? null : current))
           setNotice({
             kind: failedPrimary > 0 ? 'err' : 'ok',
             text: failedPrimary > 0
@@ -951,7 +1130,7 @@ window.__ModuleLoader__.load({
               selecting,
               selected: selected.has(item.path),
               onToggle: toggleSelect,
-              onOpen: setActive,
+              onOpen: entry => setActivePath(entry.path),
               onAction: runAction,
             })))
             : null,
@@ -984,7 +1163,18 @@ window.__ModuleLoader__.load({
             }, icon('trash', 14), ' ', t('bulkDelete')),
             h('button', { type: 'button', className: 'cfa-chip', onClick: exitSelect }, t('exitSelect')))
           : null,
-        active ? h(Lightbox, { item: active, t, onClose: () => setActive(null), onAction: runAction }) : null,
+        activeItem !== null
+          ? h(Lightbox, {
+            item: activeItem,
+            index: activeIndex,
+            count: items.length,
+            t,
+            onClose: () => setActivePath(null),
+            onAction: runAction,
+            onPrev: () => stepActive(-1),
+            onNext: () => stepActive(1),
+          })
+          : null,
         pendingDelete !== null
           ? h(ConfirmRemove, {
             item: pendingDelete,

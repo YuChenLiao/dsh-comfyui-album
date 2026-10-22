@@ -16,8 +16,8 @@ const source = fs.readFileSync(target, 'utf8')
 
 const PROPERTY = 'on[A-Z][A-Za-z0-9]*'
 const references = new Map()
-// 只认「裸标识符」：排除属性访问（props.onCancel）与函数调用（act('x')）。
-const pattern = new RegExp(`\\b(${PROPERTY}):\\s*([A-Za-z_$][\\w$]*)\\b(?!\\s*[.(])`, 'g')
+// 只认「裸标识符」：排除属性访问（props.onCancel）、函数调用（act('x')）与箭头函数参数（entry => …）。
+const pattern = new RegExp(`\\b(${PROPERTY}):\\s*([A-Za-z_$][\\w$]*)\\b(?!\\s*(?:[.(]|=>))`, 'g')
 for (const match of source.matchAll(pattern)) {
   const callback = match[2]
   if (callback === 'undefined' || callback === 'null' || callback === 'true' || callback === 'false') continue

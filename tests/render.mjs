@@ -95,6 +95,28 @@ assert.match(lightboxHtml, /class="cfa-lb"/)
 assert.match(lightboxHtml, /a cozy lighthouse keeper room at dusk/)
 assert.match(lightboxHtml, /blurry/)
 assert.match(lightboxHtml, /negativePrompt/)
+assert.match(lightboxHtml, /class="cfa-lb-zoom"/, '灯箱要带缩放条')
+assert.match(lightboxHtml, /class="cfa-lb-zvalue"/)
+assert.match(lightboxHtml, /transform:translate\(0px, 0px\) scale\(1\)/, '默认是适应窗口')
+assert.doesNotMatch(lightboxHtml, /cfa-lb-nav/, '只有一张时不显示前后箭头')
+assert.doesNotMatch(lightboxHtml, /cfa-lb-count/, '只有一张时不显示计数')
+
+// 多张时：箭头 + 计数 + 当前序号
+const multiHtml = renderToStaticMarkup(React.createElement(Lightbox, {
+  item,
+  index: 2,
+  count: 9,
+  t,
+  onClose() {},
+  onAction() {},
+  onPrev() {},
+  onNext() {},
+}))
+assert.match(multiHtml, /class="cfa-lb-nav prev"/)
+assert.match(multiHtml, /class="cfa-lb-nav next"/)
+assert.match(multiHtml, />3 \/ 9</)
+assert.match(multiHtml, /aria-label="prevImage"/)
+assert.match(multiHtml, /aria-label="nextImage"/)
 
 // ── 删除确认层 ──
 const confirmHtml = renderToStaticMarkup(React.createElement(ConfirmRemove, {

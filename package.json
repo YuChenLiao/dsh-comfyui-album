@@ -1,6 +1,6 @@
 {
   "name": "dsh-comfyui-album",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "DSH 相册插件：把 dsh-comfyui-image 生成的图片收进相册，在侧边栏浏览；悬浮即可复制图片、复制提示词、导出工作流、加入当前对话。",
   "type": "module",
   "main": "index.js",
